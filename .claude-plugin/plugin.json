@@ -6,5 +6,6 @@
     "name": "lucassimzq"
   },
   "repository": "https://github.com/lucassimzq/claude-usage-mod",
+  "license": "MIT",
   "types": "./types/index.d.ts"
 }

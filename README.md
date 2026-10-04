@@ -6,6 +6,7 @@
   <img src="https://img.shields.io/badge/Claude%20Code-mod-D97757?style=for-the-badge" alt="Claude Code mod">
   <img src="https://img.shields.io/badge/version-0.1.0-6b9e7a?style=for-the-badge" alt="Version 0.1.0">
   <img src="https://img.shields.io/badge/requires-2.1.286%2B-444?style=for-the-badge" alt="Requires Claude Code 2.1.286 or later">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c4a05a?style=for-the-badge" alt="MIT license"></a>
   <a href="https://github.com/lucassimzq"><img src="https://img.shields.io/badge/made%20by-lucassimzq-111?style=for-the-badge" alt="Made by lucassimzq"></a>
 </p>
 
@@ -21,7 +22,7 @@ Clawd's mood follows whichever of the three numbers is highest.
 
 **50% and up: anxious.** A sweat drop, and a note saying which limit is filling up.
 
-<img src="docs/states/anxious.svg" alt="Anxious Clawd with the note: Halfway through your weekly limit" width="100%">
+<img src="docs/states/anxious.svg" alt="Anxious Clawd with the note: Weekly limit is over half used" width="100%">
 
 **80% and up: frantic.**
 

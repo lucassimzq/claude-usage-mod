@@ -241,11 +241,11 @@ function clawdSvg(mood: Mood, isWorking: boolean): string {
 
   const fx = 13 * P + 1
   const drop = (x: number, begin: string) =>
-    `<g>${path(pixels(DROP, 0, 0, 1.2), '#86a8c4')}
+    `<g transform="translate(${x} 1)">${path(pixels(DROP, 0, 0, 1.2), '#86a8c4')}
       <animateTransform attributeName="transform" type="translate" values="${x} 1;${x} 4;${x} 7;${x} 10" keyTimes="0;0.25;0.5;0.75" calcMode="discrete" dur="3s" begin="${begin}" repeatCount="indefinite"/>
       <animate attributeName="opacity" values="1;1;1;0" keyTimes="0;0.25;0.5;0.75" calcMode="discrete" dur="3s" begin="${begin}" repeatCount="indefinite"/></g>`
   const effects: Record<Mood, string> = {
-    happy: `<g opacity="0">${path(pixels(HEART, 0, 0, 1.2), '#cf8a98')}
+    happy: `<g opacity="0" transform="translate(${fx} 8)">${path(pixels(HEART, 0, 0, 1.2), '#cf8a98')}
       <animateTransform attributeName="transform" type="translate" values="${fx} 8;${fx} 5;${fx} 2;${fx} -1" keyTimes="0;0.62;0.72;0.82" calcMode="discrete" dur="8s" repeatCount="indefinite"/>
       <animate attributeName="opacity" values="0;1;1;1;0" keyTimes="0;0.6;0.72;0.82;0.92" calcMode="discrete" dur="8s" repeatCount="indefinite"/></g>`,
     anxious: drop(fx, '0s'),
@@ -256,7 +256,7 @@ function clawdSvg(mood: Mood, isWorking: boolean): string {
     panic:
       drop(fx, '0s') +
       `<g transform="translate(${fx + 4} 1)">${path(pixels(BANG, 0, 0, 1.6) + pixels(BANG, 3.2, 0, 1.6), '#c06565')}${toggle('1.2s', true)}</g>`,
-    dead: `<g>${path(pixels(SOUL, 0, 0, 1.4), 'rgba(255,255,255,0.75)')}
+    dead: `<g transform="translate(8 -3)">${path(pixels(SOUL, 0, 0, 1.4), 'rgba(255,255,255,0.75)')}
       <animateTransform attributeName="transform" type="translate" values="8 2;8 -1;8 -4;8 -7" keyTimes="0;0.25;0.5;0.75" calcMode="discrete" dur="6s" repeatCount="indefinite"/>
       <animate attributeName="opacity" values="1;0.8;0.5;0.2" keyTimes="0;0.25;0.5;0.75" calcMode="discrete" dur="6s" repeatCount="indefinite"/></g>`,
   }
@@ -316,7 +316,7 @@ function noteOf(worst: Tank): string | undefined {
   if (pct >= 100) return `${cap(worst.name)} reached${worst.resetIn ? ` · resets in ${worst.resetIn}` : ''}`
   if (pct >= 95) return `${cap(worst.name)} nearly used up`
   if (pct >= 80) return `You're almost reaching your ${worst.name}`
-  if (pct >= 50) return `Halfway through your ${worst.name}`
+  if (pct >= 50) return `${cap(worst.name)} is over half used`
   return undefined
 }
 
