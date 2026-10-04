@@ -65,6 +65,14 @@ Level `L` needs `50 × L × (L − 1)` XP in all, so daily use reaches level 10 
 
 <img src="docs/levels/level-30.svg" alt="Clawd in a wizard hat beside Lv30 and a 60-day streak" width="100%">
 
+## The shop
+
+Tokens become coins: 1 for every 1,000 tokens Claude writes, plus 100 per level-up and 25 per badge. Spend them in the shop on things for Clawd to wear.
+
+<img src="docs/levels/shop.svg" alt="A mint-colored Clawd in a party hat and bow tie, with a desk plant beside him" width="100%">
+
+Clawd has six slots, so outfits mix: **head** (flower, cap, party hat, halo, crown), **face** (mustache, round glasses, monocle), **neck** (bow tie, medal), **back** (wings), **shell** (mint, lilac, rose, midnight) and a **buddy** beside him (desk plant, tiny crab). Prices run from 50 to 2,000 coins, and the fanciest items also need a minimum level. Level unlocks stay free and fill their slots until you pick something else.
+
 ## Install
 
 Clone the repo:
@@ -94,8 +102,9 @@ You need Claude Code 2.1.286 or later. The `5h` and `7d` bars need a Claude subs
 ## Use
 
 - **`/usage-hud`** hides or shows the band.
-- **`/usage-hud stats`** shows Clawd's level, XP, streak, tokens counted and badges.
-- **`/usage-hud wear <item>`** picks what Clawd wears from what you've unlocked (`wear none` for nothing).
+- **`/usage-hud stats`** shows Clawd's level, XP, streak, coins, tokens counted and badges.
+- **`/usage-hud shop`** lists everything with prices and your coins; **`/usage-hud buy <item>`** buys it and puts it on.
+- **`/usage-hud wear <item>`** and **`/usage-hud remove <item>`** change the outfit (`wear none` takes it all off).
 - **`↻`** refreshes the figures (`r` in the terminal while the band has focus).
 
 The desktop Code tab draws the pixel version. The terminal shows text bars with a face like `(°□°;)`.

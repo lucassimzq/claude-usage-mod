@@ -238,6 +238,20 @@ const HARD_HAT = ['....#####....', '...###y###...', '.###########.']
 const CAPE = ['', '.#.........#.', '.#.........#.', '', '', '##.........##', '##.........##', '##.........##', '#...........#']
 const WIZARD_HAT = ['.......##....', '.....###y....', '..#########..']
 const SPARKLE = ['.#.', '###', '.#.']
+// And what the shop sells.
+const WINGS = ['#...........#', '##.........##', '##.........##']
+const PARTY_HAT = ['......#......', '.....#y#.....', '....#####....']
+const CAP = ['', '...#######...', '..##########.']
+const CROWN = ['...#.#.#.#...', '...#######...', '...#y###y#...']
+const FLOWER = ['.........#.#.', '.........#y#.', '.........#.#.']
+const HALO = ['...#######...']
+const MONOCLE = ['......#####..', '......#...#..', '......#...#..', '......#...#..', '......#####..', '..........#..']
+const SPECS = ['...###.###...', '..#...#...#..', '..#...#...#..', '..#...#...#..', '...###.###...']
+const MUSTACHE = ['', '', '', '', '....##.##....', '...##...##...']
+const BOW_TIE = ['', '', '', '', '', '....##y##....', '....#...#....']
+const MEDAL = ['', '', '', '', '', '.....#.#.....', '......y......']
+const PLANT = ['g.g.', '.g..', 'ppp.', 'ppp.']
+const TINY_CRAB = ['#####', '#k#k#', '#####', '.#.#.']
 
 const COLORS = {
   band: '#9aa0a8',
@@ -264,10 +278,28 @@ const COLORS = {
   wizard: '#7d6bc4',
   golden: '#d9b25a',
   level: '#a99be0',
+  wings: '#e2e2e2',
+  party: '#d98fa0',
+  cap: '#6b8fc4',
+  gem: '#c06565',
+  frames: '#3a3a3a',
+  mustache: '#5a3d2b',
+  bow: '#c06565',
+  knot: '#8f4646',
+  leaf: '#6b9e7a',
+  pot: '#b9775f',
+}
+
+const SHELLS: Record<string, string> = {
+  golden: '#d9b25a',
+  mint: '#86b89a',
+  lilac: '#a99be0',
+  rose: '#d98fa0',
+  midnight: '#56679a',
 }
 
 // Each mood is a small scene, not a dance: Clawd holds still and one prop moves, slowly.
-function clawdSvg(mood: Mood, doing: Activity, wear?: string, burst = false): string {
+function clawdSvg(mood: Mood, doing: Activity, outfit: Record<string, string> = {}, burst = false): string {
   const path = (d: string, fill: string, extra = '') => (d ? `<path d="${d}" fill="${fill}"${extra}/>` : '')
   const grid = (g: string[], fill: string, ch = '#', ox = 0, oy = 0, p = P) => path(pixels(g, ox, oy, p, ch), fill)
   const toggle = (dur: string, first: boolean) =>
@@ -285,7 +317,8 @@ function clawdSvg(mood: Mood, doing: Activity, wear?: string, burst = false): st
   const typing = doing === 'typing' && mood !== 'asleep'
   const thinking = doing === 'thinking' && mood !== 'asleep'
   const holdsMug = !typing && (mood === 'anxious' || mood === 'panic')
-  const body = mood === 'asleep' ? COLORS.sleepy : wear === 'golden' ? COLORS.golden : CLAWD
+  const shell = outfit.shell ? SHELLS[outfit.shell] : undefined
+  const body = shell ?? (mood === 'asleep' ? COLORS.sleepy : CLAWD)
   const fx = (holdsMug ? 16 : 13) * P + 1 // where the props on the right begin
 
   const legs = typing
@@ -305,15 +338,32 @@ function clawdSvg(mood: Mood, doing: Activity, wear?: string, burst = false): st
   const headphones = mood === 'happy' ? grid(HEADPHONES, COLORS.band, 'b', 0, -P) + grid(HEADPHONES, COLORS.cups, 'c', 0, -P) : ''
   const tense = mood === 'frantic' || mood === 'panic' || mood === 'asleep'
   const hat = -2 * P
-  const outfit: Record<string, string> = {
-    scarf: grid(SCARF, COLORS.scarf),
-    beanie: grid(BEANIE, COLORS.beanie, '#', 0, hat) + grid(BEANIE, COLORS.beanieBrim, 'd', 0, hat),
-    sunglasses: tense ? grid(SHADES_UP, INK) : grid(SHADES, INK),
-    hardhat: grid(HARD_HAT, COLORS.hardHat, '#', 0, hat) + grid(HARD_HAT, COLORS.shine, 'y', 0, hat),
-    wizard: grid(WIZARD_HAT, COLORS.wizard, '#', 0, hat) + grid(WIZARD_HAT, COLORS.shine, 'y', 0, hat),
+  const art: Record<string, () => string> = {
+    scarf: () => grid(SCARF, COLORS.scarf),
+    beanie: () => grid(BEANIE, COLORS.beanie, '#', 0, hat) + grid(BEANIE, COLORS.beanieBrim, 'd', 0, hat),
+    sunglasses: () => (tense ? grid(SHADES_UP, INK) : grid(SHADES, INK)),
+    hardhat: () => grid(HARD_HAT, COLORS.hardHat, '#', 0, hat) + grid(HARD_HAT, COLORS.shine, 'y', 0, hat),
+    wizard: () => grid(WIZARD_HAT, COLORS.wizard, '#', 0, hat) + grid(WIZARD_HAT, COLORS.shine, 'y', 0, hat),
+    cape: () => grid(CAPE, COLORS.cape),
+    wings: () => grid(WINGS, COLORS.wings),
+    party: () => grid(PARTY_HAT, COLORS.party, '#', 0, hat) + grid(PARTY_HAT, COLORS.shine, 'y', 0, hat),
+    cap: () => grid(CAP, COLORS.cap, '#', 0, hat),
+    crown: () => grid(CROWN, COLORS.golden, '#', 0, hat) + grid(CROWN, COLORS.gem, 'y', 0, hat),
+    flower: () => grid(FLOWER, COLORS.party, '#', 0, hat) + grid(FLOWER, COLORS.shine, 'y', 0, hat),
+    halo: () => grid(HALO, COLORS.shine, '#', 0, hat),
+    monocle: () => grid(MONOCLE, COLORS.golden),
+    specs: () => grid(SPECS, COLORS.frames),
+    mustache: () => grid(MUSTACHE, COLORS.mustache),
+    bowtie: () => grid(BOW_TIE, COLORS.bow) + grid(BOW_TIE, COLORS.knot, 'y'),
+    medal: () => grid(MEDAL, COLORS.scarf) + grid(MEDAL, COLORS.shine, 'y'),
+    // A buddy sits on Clawd's left; it steps aside for the flames.
+    plant: () => (mood === 'panic' ? '' : grid(PLANT, COLORS.leaf, 'g', -8, 12, 1.2) + grid(PLANT, COLORS.pot, 'p', -8, 12, 1.2)),
+    crab: () => (mood === 'panic' ? '' : grid(TINY_CRAB, CLAWD, '#', -8, 11.6, 1.3) + grid(TINY_CRAB, INK, 'k', -8, 11.6, 1.3)),
   }
-  const worn = (wear && outfit[wear]) || ''
-  const cape = wear === 'cape' ? grid(CAPE, COLORS.cape) : ''
+  const wearing = (slot: string) => {
+    const id = outfit[slot]
+    return (id && art[id]?.()) || ''
+  }
   // A level-up: a few sparkles blink twice around him, then stay gone.
   const sparkles = burst
     ? [[-7, 0], [27, -3], [-5, 13], [29, 13]]
@@ -373,8 +423,8 @@ function clawdSvg(mood: Mood, doing: Activity, wear?: string, burst = false): st
   }
   const left: Record<Mood, string> = { happy: '', anxious: sweat, frantic: sweat, panic: flames(-7), asleep: '' }
   return `<g transform="translate(8 5)">
-    ${cape}${legs}<path d="${pixels(BODY, 0, 0, P)}" fill="${body}"/>
-    ${headphones}${eyes}${blush}${arms}${worn}${laptop}${mug}
+    ${wearing('back')}${legs}<path d="${pixels(BODY, 0, 0, P)}" fill="${body}"/>
+    ${headphones}${eyes}${blush}${arms}${wearing('neck')}${wearing('face')}${wearing('head')}${laptop}${mug}${wearing('buddy')}
     ${left[mood]}${thinking ? thought : right[mood]}${sparkles}
   </g>`
 }
@@ -553,7 +603,7 @@ function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width:
     units.push(`<path d="${textPixels(s, width - textWidth(s) - 2, ty)}" fill="${MUTED}"/>`)
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" shape-rendering="crispEdges">
-  ${clawdSvg(mood, doing, view?.wear, view?.burst)}
+  ${clawdSvg(mood, doing, view?.outfit, view?.burst)}
   ${cluster?.svg ?? ''}${note?.svg ?? ''}
   ${units.join('\n')}
 </svg>`
@@ -581,25 +631,58 @@ const LEVELS: { at: number; title: string; item?: string }[] = [
   { at: 50, title: 'Legend', item: 'golden' },
 ]
 
-const ITEM_NAMES: Record<string, string> = {
-  scarf: 'scarf',
-  beanie: 'beanie',
-  sunglasses: 'sunglasses',
-  hardhat: 'hard hat',
-  cape: 'cape',
-  wizard: 'wizard hat',
-  golden: 'golden shell',
+type Slot = 'head' | 'face' | 'neck' | 'back' | 'shell' | 'buddy'
+const SLOTS: Slot[] = ['head', 'face', 'neck', 'back', 'shell', 'buddy']
+
+// Everything Clawd can wear: level unlocks (no price) and the shop, cheapest first.
+// `level` on a shop item is the level it needs before it can be bought.
+const ITEMS: Record<string, { name: string; slot: Slot; price?: number; level?: number }> = {
+  scarf: { name: 'scarf', slot: 'neck' },
+  beanie: { name: 'beanie', slot: 'head' },
+  sunglasses: { name: 'sunglasses', slot: 'face' },
+  hardhat: { name: 'hard hat', slot: 'head' },
+  cape: { name: 'cape', slot: 'back' },
+  wizard: { name: 'wizard hat', slot: 'head' },
+  golden: { name: 'golden shell', slot: 'shell' },
+  bowtie: { name: 'bow tie', slot: 'neck', price: 50 },
+  flower: { name: 'flower', slot: 'head', price: 80 },
+  cap: { name: 'cap', slot: 'head', price: 100 },
+  mustache: { name: 'mustache', slot: 'face', price: 120 },
+  party: { name: 'party hat', slot: 'head', price: 150 },
+  plant: { name: 'desk plant', slot: 'buddy', price: 150 },
+  specs: { name: 'round glasses', slot: 'face', price: 200 },
+  mint: { name: 'mint shell', slot: 'shell', price: 250 },
+  lilac: { name: 'lilac shell', slot: 'shell', price: 250 },
+  rose: { name: 'rose shell', slot: 'shell', price: 250 },
+  monocle: { name: 'monocle', slot: 'face', price: 300 },
+  medal: { name: 'medal', slot: 'neck', price: 500, level: 10 },
+  midnight: { name: 'midnight shell', slot: 'shell', price: 600 },
+  crab: { name: 'tiny crab', slot: 'buddy', price: 800, level: 5 },
+  halo: { name: 'halo', slot: 'head', price: 1200, level: 15 },
+  wings: { name: 'wings', slot: 'back', price: 1500, level: 25 },
+  crown: { name: 'crown', slot: 'head', price: 2000, level: 20 },
 }
+
+const nameOf = (id: string) => ITEMS[id]?.name ?? id
 
 const reached = (level: number) => LEVELS.filter(m => m.at <= level)
 const titleOf = (level: number) => reached(level).at(-1)?.title ?? 'Hatchling'
 const itemsOf = (level: number) => reached(level).flatMap(m => (m.item ? [m.item] : []))
 
-/** What Clawd wears: the pick, if it's unlocked; else the newest unlock. `none` wears nothing. */
-function wornOf(level: number, wear?: string): string | undefined {
-  const items = itemsOf(level)
-  if (wear === 'none') return undefined
-  return wear && items.includes(wear) ? wear : items[items.length - 1]
+const owns = (p: Progress, level: number, id: string) => itemsOf(level).includes(id) || (p.owned ?? []).includes(id)
+
+/** What Clawd wears, slot by slot: the pick if it's owned, else the newest level unlock for that slot. */
+function outfitOf(p: Progress, level: number): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const id of itemsOf(level)) {
+    const slot = ITEMS[id]?.slot
+    if (slot) out[slot] = id
+  }
+  for (const [slot, id] of Object.entries(p.outfit ?? {})) {
+    if (id === 'none') delete out[slot]
+    else if (owns(p, level, id)) out[slot] = id
+  }
+  return out
 }
 
 /** A local calendar date as `YYYY-MM-DD`. */
@@ -619,12 +702,12 @@ function liveStreak(p: Progress, now: number): number {
   return missed <= s.restDays ? s.count : 0
 }
 
-type GameView = { level: number; frac: number; streak: number; wear?: string; burst?: boolean }
+type GameView = { level: number; frac: number; streak: number; outfit?: Record<string, string>; burst?: boolean }
 
 function gameViewOf(p: Progress, now: number, burst = false): GameView {
   const level = levelOf(p.xp)
   const frac = (p.xp - xpFor(level)) / (xpFor(level + 1) - xpFor(level))
-  return { level, frac, streak: liveStreak(p, now), wear: wornOf(level, p.wear), burst }
+  return { level, frac, streak: liveStreak(p, now), outfit: outfitOf(p, level), burst }
 }
 
 // The level cluster beside Clawd: `Lv7` over a thin XP bar, then a flame and the streak
@@ -678,6 +761,12 @@ const XP = {
   badge: 50,
 }
 
+const COINS = {
+  perTokens: 1000, // one coin per this many tokens Claude writes
+  level: 100,
+  badge: 25,
+}
+
 const BADGES: Record<string, { name: string; how: string }> = {
   'first-steps': { name: 'First Steps', how: 'your first turn with Clawd' },
   'on-a-roll': { name: 'On a Roll', how: 'a 7-day streak' },
@@ -706,6 +795,10 @@ function newProgress(): Progress {
     windows: {},
     paced: 0,
     phoenix: false,
+    coins: 0,
+    coinTokens: 0,
+    owned: [],
+    outfit: {},
   }
 }
 
@@ -716,8 +809,8 @@ function progressOf(saved: unknown): Progress {
   return { ...base, ...(saved as Partial<Progress>) }
 }
 
-/** A change to the progress and what to tell the person about it. */
-type Step = { p: Progress; news: string[] }
+/** A change to the progress, the toasts it calls for, and a command's answer. */
+type Step = { p: Progress; news: string[]; reply?: string }
 
 const stepFrom = (p: Progress): Step => ({ p: JSON.parse(JSON.stringify(p)), news: [] })
 
@@ -725,7 +818,8 @@ function earn(step: Step, id: string, day: string) {
   if (step.p.badges[id] || !BADGES[id]) return
   step.p.badges[id] = day
   step.p.xp += XP.badge
-  step.news.push(`Badge earned: ${BADGES[id].name}, ${BADGES[id].how} (+${XP.badge} XP)`)
+  step.p.coins += COINS.badge
+  step.news.push(`Badge earned: ${BADGES[id].name}, ${BADGES[id].how} (+${XP.badge} XP, +${COINS.badge} coins)`)
 }
 
 type TurnFacts = {
@@ -743,6 +837,11 @@ function afterTurn(prev: Progress, t: TurnFacts): Step {
   if (t.usage) {
     p.tokensIn += t.usage.input_tokens + t.usage.cache_read_input_tokens + t.usage.cache_creation_input_tokens
     p.tokensOut += t.usage.output_tokens
+    // Written tokens become coins, a thousand at a time; the rest waits for the next turn.
+    p.coinTokens += t.usage.output_tokens
+    const coins = Math.floor(p.coinTokens / COINS.perTokens)
+    p.coins += coins
+    p.coinTokens -= coins * COINS.perTokens
   }
 
   // The first turn of a day carries the streak on, spending rest days on any days missed.
@@ -841,8 +940,8 @@ function afterMeasure(prev: Progress, snap: Snapshot, now: number, prevCtx?: num
 function statsOf(p: Progress, now: number): string {
   const level = levelOf(p.xp)
   const xp = Math.floor(p.xp)
-  const items = itemsOf(level)
-  const worn = wornOf(level, p.wear)
+  const outfit = outfitOf(p, level)
+  const worn = SLOTS.flatMap(slot => (outfit[slot] ? [nameOf(outfit[slot])] : []))
   const all = Object.entries(BADGES)
   const earned = all.filter(([id]) => p.badges[id]).map(([, b]) => b.name)
   const left = all.filter(([id]) => !p.badges[id]).map(([, b]) => `${b.name} (${b.how})`)
@@ -852,10 +951,8 @@ function statsOf(p: Progress, now: number): string {
     `Clawd · level ${level}, ${titleOf(level)} · ${xp.toLocaleString('en-US')} XP, ${(xpFor(level + 1) - xp).toLocaleString('en-US')} to level ${level + 1}`,
     `Streak: ${streak} day${streak === 1 ? '' : 's'} (best ${p.streak.best}) · ${p.streak.restDays} rest day${p.streak.restDays === 1 ? '' : 's'} saved`,
     `Turns: ${p.turns.toLocaleString('en-US')} · tokens: ${tokens(p.tokensIn)} in, ${tokens(p.tokensOut)} out`,
-    items.length
-      ? `Wearing: ${worn ? ITEM_NAMES[worn] : 'nothing'} · unlocked: ${items.map(i => ITEM_NAMES[i]).join(', ')} (/usage-hud wear <item>)`
-      : `Nothing to wear yet; the scarf comes at level 3`,
-    next ? `Next: ${next.title === titleOf(level) ? '' : `${next.title}, `}${next.item ? ITEM_NAMES[next.item] : ''} at level ${next.at}` : '',
+    `Coins: ${p.coins.toLocaleString('en-US')} · wearing: ${worn.join(', ') || 'nothing'} (/usage-hud shop)`,
+    next ? `Next: ${next.title === titleOf(level) ? '' : `${next.title}, `}${next.item ? nameOf(next.item) : ''} at level ${next.at}` : '',
     `Badges ${earned.length}/${all.length}: ${earned.join(', ') || 'none yet'}`,
     left.length ? `Still to earn: ${left.join('; ')}` : '',
   ]
@@ -863,11 +960,91 @@ function statsOf(p: Progress, now: number): string {
     .join('\n')
 }
 
-/** The item a `/usage-hud wear` argument names, by id or by name; `none` takes it all off. */
+/** The item an argument names, by id or by name (`hard hat`, `the crown`); `none` for everything. */
 function itemNamed(arg: string): string | undefined {
+  const want = arg.trim().toLowerCase().replace(/^the\s+/, '')
+  if (want === 'none' || want === 'nothing' || want === 'all' || want === 'everything') return 'none'
+  return Object.keys(ITEMS).find(id => id === want || ITEMS[id]?.name === want)
+}
+
+const unlockLevel = (id: string) => LEVELS.find(m => m.item === id)?.at
+
+function shopOf(p: Progress): string {
+  const level = levelOf(p.xp)
+  const worn = outfitOf(p, level)
+  const line = (slot: Slot) =>
+    Object.entries(ITEMS)
+      .filter(([, item]) => item.slot === slot)
+      .map(([id, item]) => {
+        const cost = item.price ? `${item.price.toLocaleString('en-US')}` : `free at level ${unlockLevel(id)}`
+        const mark = worn[slot] === id ? ' (wearing)' : owns(p, level, id) ? ' ✓' : item.level && level < item.level ? ` (needs level ${item.level})` : ''
+        return `${item.name} ${cost}${mark}`
+      })
+      .join(' · ')
+  return [
+    `Shop · you have ${p.coins.toLocaleString('en-US')} coins (1 per ${COINS.perTokens.toLocaleString('en-US')} tokens Claude writes, ${COINS.level} per level-up, ${COINS.badge} per badge)`,
+    ...SLOTS.map(slot => `${slot[0]?.toUpperCase()}${slot.slice(1)}: ${line(slot)}`),
+    `/usage-hud buy <item> to buy · wear <item> or remove <item> to change outfits · wear none to take it all off`,
+  ].join('\n')
+}
+
+function bought(prev: Progress, arg: string): Step {
+  const step = stepFrom(prev)
+  const p = step.p
+  const level = levelOf(p.xp)
+  const id = itemNamed(arg)
+  const item = id ? ITEMS[id] : undefined
+  if (!id || !item) step.reply = `There's no "${arg}" in the shop. /usage-hud shop lists everything.`
+  else if (!item.price) step.reply = `The ${item.name} isn't for sale: it comes free at level ${unlockLevel(id)}.`
+  else if (owns(p, level, id)) step.reply = `You already have the ${item.name}. /usage-hud wear ${id} puts it on.`
+  else if (item.level && level < item.level) step.reply = `The ${item.name} needs level ${item.level}, and Clawd is level ${level}.`
+  else if (p.coins < item.price) step.reply = `The ${item.name} costs ${item.price.toLocaleString('en-US')} coins and you have ${p.coins.toLocaleString('en-US')}.`
+  else {
+    p.coins -= item.price
+    p.owned.push(id)
+    p.outfit[item.slot] = id
+    step.reply = `Bought the ${item.name} for ${item.price.toLocaleString('en-US')} coins, and Clawd's wearing it. ${p.coins.toLocaleString('en-US')} coins left.`
+  }
+  return step
+}
+
+function dressed(prev: Progress, arg: string): Step {
+  const step = stepFrom(prev)
+  const p = step.p
+  const level = levelOf(p.xp)
+  const id = itemNamed(arg)
+  const item = id ? ITEMS[id] : undefined
+  if (id === 'none') {
+    for (const slot of SLOTS) p.outfit[slot] = 'none'
+    step.reply = 'Clawd took everything off.'
+  } else if (!id || !item) {
+    const mine = Object.keys(ITEMS).filter(i => owns(p, level, i)).map(nameOf)
+    step.reply = `Clawd can wear: ${mine.join(', ') || 'nothing yet'}. /usage-hud shop has more.`
+  } else if (!owns(p, level, id)) {
+    step.reply = item.price
+      ? `Clawd doesn't have the ${item.name} yet: it's ${item.price.toLocaleString('en-US')} coins in /usage-hud shop.`
+      : `The ${item.name} unlocks at level ${unlockLevel(id)}.`
+  } else {
+    p.outfit[item.slot] = id
+    step.reply = `Clawd is wearing the ${item.name}.`
+  }
+  return step
+}
+
+function undressed(prev: Progress, arg: string): Step {
+  const step = stepFrom(prev)
+  const p = step.p
   const want = arg.trim().toLowerCase()
-  if (want === 'none' || want === 'nothing') return 'none'
-  return Object.keys(ITEM_NAMES).find(id => id === want || ITEM_NAMES[id] === want)
+  const id = itemNamed(want)
+  const slot = SLOTS.find(s => s === want) ?? (id && id !== 'none' ? ITEMS[id]?.slot : undefined)
+  const on = slot ? outfitOf(p, levelOf(p.xp))[slot] : undefined
+  if (!slot || !on || (id && id !== 'none' && id !== on)) {
+    step.reply = `Clawd isn't wearing that. /usage-hud stats shows what he has on.`
+  } else {
+    p.outfit[slot] = 'none'
+    step.reply = `Took off the ${nameOf(on)}.`
+  }
+  return step
 }
 // #endregion game
 
@@ -905,28 +1082,33 @@ let sparkle: { cancel: () => void } | undefined
 
 // Applies one change to Clawd's progress, one change at a time: read fresh from the
 // store (another session may have moved it on), changed, saved, drawn, announced.
-async function play($: EngineInterface, change: (p: Progress, now: number) => Step) {
+async function play($: EngineInterface, change: (p: Progress, now: number) => Step): Promise<string | undefined> {
   const run = playing.then(async () => {
     const now = await $.clock.now()
     const before = progressOf(await $.store.get(PROGRESS))
-    const { p, news } = change(before, now)
-    await $.store.set(PROGRESS, p)
+    const { p, news, reply } = change(before, now)
     const was = levelOf(before.xp)
     const is = levelOf(p.xp)
+    p.coins += COINS.level * Math.max(0, is - was)
+    await $.store.set(PROGRESS, p)
     await update($, game, (g: Game) => ({ progress: p, burst: is > was || g.burst }))
     if (is > was) {
       const unlock = LEVELS.filter(m => m.at > was && m.at <= is && m.item).pop()?.item
-      $.ui.toast(`Clawd reached level ${is}: ${titleOf(is)}${unlock ? `, ${ITEM_NAMES[unlock]} unlocked` : ''}`)
+      $.ui.toast(
+        `Clawd reached level ${is}: ${titleOf(is)}${unlock ? `, ${nameOf(unlock)} unlocked` : ''} (+${COINS.level * (is - was)} coins)`,
+      )
       sparkle?.cancel()
       sparkle = $.clock.after(2600, () => {
         void update($, game, (g: Game) => ({ ...g, burst: false }))
       })
     }
     for (const line of news) $.ui.toast(line)
+    return reply
   })
   // A failed change is dropped; the game never gets in the way of the band.
-  playing = run.catch(() => undefined)
-  return playing
+  const settled = run.catch(() => undefined)
+  playing = settled
+  return settled
 }
 
 // This session's own counts, for the badges that are about one session.
@@ -974,8 +1156,8 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'usage-hud',
-      description: "Show or hide the usage band; `stats` for Clawd's level and badges, `wear <item>` to dress him",
-      argumentHint: '[stats | wear <item>]',
+      description: "Show or hide the usage band; `stats` for Clawd's level, `shop` to spend coins on outfits",
+      argumentHint: '[stats | shop | buy <item> | wear <item> | remove <item>]',
     })
     const saved = progressOf(await $.store.get(PROGRESS))
     await update($, game, () => ({ progress: saved, burst: false }))
@@ -1023,16 +1205,14 @@ export const register: Register = on => {
     if (verb === 'stats') {
       return { text: statsOf(progressOf(await $.store.get(PROGRESS)), await $.clock.now()) }
     }
-    if (verb === 'wear') {
-      const p = progressOf(await $.store.get(PROGRESS))
-      const items = itemsOf(levelOf(p.xp))
-      const pick = itemNamed(rest.join(' '))
-      if (!pick || (pick !== 'none' && !items.includes(pick))) {
-        const owned = items.length ? items.map(i => ITEM_NAMES[i]).join(', ') : 'nothing yet (the scarf comes at level 3)'
-        return { text: `Clawd can wear: ${owned}. Try /usage-hud wear <item>, or wear none.` }
-      }
-      await play($, q => ({ p: { ...q, wear: pick }, news: [] }))
-      return { text: pick === 'none' ? 'Clawd took everything off.' : `Clawd is wearing the ${ITEM_NAMES[pick]}.` }
+    if (verb === 'shop') {
+      return { text: shopOf(progressOf(await $.store.get(PROGRESS))) }
+    }
+    // Each of these reads the progress fresh inside play(), so a purchase can't race a turn.
+    const arg = rest.join(' ')
+    const change = verb === 'buy' ? bought : verb === 'wear' ? dressed : verb === 'remove' ? undressed : undefined
+    if (change) {
+      return { text: (await play($, p => change(p, arg))) ?? 'Something went wrong; nothing changed.' }
     }
     let hidden = false
     await update($, isHidden, h => (hidden = !h))

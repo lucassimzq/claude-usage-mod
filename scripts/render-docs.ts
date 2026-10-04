@@ -39,7 +39,7 @@ function snapshot(ctx: number, session: number, weekly: number) {
 }
 
 // The band as it sits above the prompt: a dark card, the refresh glyph, a mock prompt box.
-type View = { level: number; frac: number; streak: number; wear?: string }
+type View = { level: number; frac: number; streak: number; outfit?: Record<string, string> }
 
 function card(snap: ReturnType<typeof snapshot>, view?: View): string {
   const pad = 14
@@ -110,9 +110,11 @@ for (const [name, snap] of Object.entries(states)) {
 
 // Clawd at a few levels, each in what that level unlocks.
 const levels: Record<string, View> = {
-  'level-5': { level: 5, frac: 0.7, streak: 5, wear: 'beanie' },
-  'level-15': { level: 15, frac: 0.6, streak: 21, wear: 'hardhat' },
-  'level-30': { level: 30, frac: 0.5, streak: 60, wear: 'wizard' },
+  'level-5': { level: 5, frac: 0.7, streak: 5, outfit: { head: 'beanie', neck: 'scarf' } },
+  'level-15': { level: 15, frac: 0.6, streak: 21, outfit: { head: 'hardhat', face: 'sunglasses', neck: 'scarf' } },
+  'level-30': { level: 30, frac: 0.5, streak: 60, outfit: { head: 'wizard', face: 'sunglasses', back: 'cape' } },
+  // Shop buys: a party hat, a bow tie, a mint shell and a desk plant.
+  shop: { level: 8, frac: 0.3, streak: 6, outfit: { head: 'party', neck: 'bowtie', shell: 'mint', buddy: 'plant' } },
 }
 mkdirSync(join(root, 'docs/levels'), { recursive: true })
 for (const [name, view] of Object.entries(levels)) {

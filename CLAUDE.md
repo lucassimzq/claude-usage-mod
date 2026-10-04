@@ -40,6 +40,9 @@ A Claude Code mod (a plugin of function hooks, plugin name `usage-hud`) that dra
 - Nothing is earned for usage from before the game first saw a window.
 - Reaching 100% pays out at once (`maxedOut()`), once per window: Lucas wanted hitting the limit to feel like a win, not a penalty.
 - In `planOf()` the level cluster is the first thing to give way: the streak, then the rest of it.
+- Coins: 1 per 1,000 written tokens (the remainder carries in `coinTokens`), 100 per level-up (added in `play()`), 25 per badge. Cache tokens don't count, or prices would spiral.
+- `ITEMS` is the one catalog: level unlocks have no `price`. Each item has a slot; `outfitOf()` fills every slot with its newest level unlock unless `outfit` picks an owned item or `none`. Buddies sit left of Clawd and step aside for the panic flames.
+- Shop commands (`bought`, `dressed`, `undressed`) run inside `play()` so a purchase can't race a turn's write.
 
 ## Mood thresholds
 

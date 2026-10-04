@@ -42,8 +42,15 @@ export type Progress = {
   paced: number
   /** A limit hit 100% and has since reset: the next turn earns Phoenix. */
   phoenix: boolean
-  /** The cosmetic picked with `/usage-hud wear`; absent wears the newest unlocked. */
-  wear?: string
+  /** Shop money: 1 per 1,000 tokens Claude writes, 100 per level, 25 per badge. */
+  coins: number
+  /** Written tokens not yet turned into a coin. */
+  coinTokens: number
+  /** Shop items bought; level unlocks are owned by reaching the level. */
+  owned: string[]
+  /** What Clawd wears in each slot (`head`, `face`, `neck`, `back`, `shell`, `buddy`), or `none`.
+   * A slot left out wears the newest level unlock for it. */
+  outfit: Record<string, string>
 }
 
 /** `burst` is true for a moment after a level-up, while the sparkle plays. */

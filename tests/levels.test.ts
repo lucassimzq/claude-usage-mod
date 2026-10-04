@@ -77,15 +77,37 @@ test('weekly points earn XP, and a week that peaked at 95–99% earns Close Call
   expect(await stats($)).toMatch(/· 350 XP/)
 })
 
-test('wear picks only what is unlocked', async ($, on) => {
+test('wear picks only what is owned', async ($, on) => {
   mock.store(on, { progress: { xp: 1000 } })
   mock.clock(on, { now: NOON })
   on('command.run', () => ({ text: '' }))
 
   const wear = async (item: string) => (await $.command.run({ command: 'usage-hud', args: `wear ${item}` })).text
-  expect(await wear('cape')).toMatch(/Clawd can wear: scarf, beanie/)
-  expect(await wear('scarf')).toBe('Clawd is wearing the scarf.')
-  expect(await stats($)).toMatch(/Wearing: scarf/)
+  expect(await wear('cape')).toBe('The cape unlocks at level 20.')
+  expect(await wear('crown')).toMatch(/doesn't have the crown yet: it's 2,000 coins/)
+  // Level 5 unlocks the scarf and the beanie, and both are worn at once
+  expect(await stats($)).toMatch(/wearing: beanie, scarf/)
+  expect(await $.command.run({ command: 'usage-hud', args: 'remove hat' }).then(r => r.text)).toMatch(/isn't wearing that/)
+  expect(await $.command.run({ command: 'usage-hud', args: 'remove head' }).then(r => r.text)).toBe('Took off the beanie.')
+  expect(await stats($)).toMatch(/wearing: scarf/)
+})
+
+test('the shop sells for coins, and coins come from written tokens, levels and badges', async ($, on) => {
+  mock.store(on, { progress: { xp: 1000, coins: 200, coinTokens: 900 } })
+  mock.clock(on, { now: NOON })
+  on('turn.complete', () => ({ text: '' }))
+  on('command.run', () => ({ text: '' }))
+  const run = async (args: string) => (await $.command.run({ command: 'usage-hud', args })).text
+
+  // 900 + 200 written tokens make one coin; First Steps adds 25
+  await turn($)
+  expect(await stats($)).toMatch(/Coins: 226/)
+  expect(await run('shop')).toMatch(/Head: beanie free at level 5 \(wearing\) · .* · flower 80 · cap 100 · party hat 150 · halo 1,200 \(needs level 15\)/)
+  expect(await run('buy crown')).toBe('The crown needs level 20, and Clawd is level 5.')
+  expect(await run('buy the party hat')).toBe("Bought the party hat for 150 coins, and Clawd's wearing it. 76 coins left.")
+  expect(await run('buy party')).toMatch(/already have the party hat/)
+  expect(await run('buy monocle')).toBe('The monocle costs 300 coins and you have 76.')
+  expect(await stats($)).toMatch(/wearing: party hat, scarf/)
 })
 
 test('the band shows the level on every surface, and gives it up when narrow', async ($, on) => {
