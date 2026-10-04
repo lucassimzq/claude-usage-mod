@@ -17,6 +17,7 @@ A Claude Code mod (a plugin of function hooks, plugin name `usage-hud`) that dra
 - `session.measure` pushes new figures after each turn and whenever a limit moves a point.
 - Both feed `take()`, which writes `gauges` (`{ cur, prev }`) and toasts when a limit crosses 50, 80 or 95%. `prev` is what new bar cells flash from; a timer sets it equal to `cur` after the flash so later redraws don't replay it.
 - The `AbovePrompt` render hook draws the band: on desktop, one SVG plus a native `↻` Button; in the terminal, `Text` bars.
+- `turn.step` (main conversation only, never a subagent), `tool.call` and `turn.complete` set `activity`: `thinking` while a request is pending or thinking streams, `typing` once text or a tool call arrives, `idle` at the end. The band reads it only while `isWorking`, so a missed `turn.complete` can't leave Clawd stuck. `setActivity` writes only on a change.
 
 ## Things that are easy to get wrong
 
@@ -25,12 +26,13 @@ A Claude Code mod (a plugin of function hooks, plugin name `usage-hud`) that dra
 - **The desktop SVG is drawn as an image, not `isInteractive`.** The interactive frame paints a white background and a fixed size. An image can't take a press, which is why `↻` is a separate Button beside it, and why there are no hover tooltips.
 - **The first frame must be right on its own.** SMIL may not run in image mode on every surface, so nothing essential is hidden at t=0: lit cells are drawn lit and the reveal is a white flash on top. Very short animations (1ms) and `<set>` didn't fire in testing; use `<animate>` with `calcMode="discrete"`.
 - **Width:** the desktop reports the band in code-font cells; `PX_PER_COLUMN` (7.8) turns that into pixels. Adjust it if the band ends short of the edge or overflows.
-- **Helpers that take `$` must be top-level function declarations.** `claude plugin validate` follows `$` only into those (`take`, `withSaved`, `refresh`).
+- **Helpers that take `$` must be top-level function declarations.** `claude plugin validate` follows `$` only into those (`take`, `withSaved`, `refresh`, `setActivity`).
+- **Clawd's scenes:** each mood is a small scene with one slow-moving prop (headphones and notes, coffee and steam, a ticking clock, flames, Z's), and props on his right give way to the thought bubble while Claude thinks. Positions animated with `animateTransform` also get a matching `transform` attribute, so a still frame puts them in the right place.
 - **Calm by design:** the user asked for flat 2D cells, muted colors (`TONES`) and very little motion. Clawd mostly holds still, with one short beat every few seconds; keep new animation in that spirit.
 
 ## Mood thresholds
 
-`moodOf` and `tone` share the same breakpoints: under 50 happy/green, 50 anxious/amber, 80 frantic/red, 95 panic, 100 dead. `noteOf` writes the speech-bubble text from the same numbers.
+`moodOf` and `tone` share the same breakpoints: under 50 happy/green, 50 anxious/amber, 80 frantic/red, 95 panic, 100 asleep. `noteOf` writes the speech-bubble text from the same numbers.
 
 ## Checking a change
 

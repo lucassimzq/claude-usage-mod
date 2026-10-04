@@ -44,7 +44,7 @@ function card(snap: ReturnType<typeof snapshot>): string {
   const w = BAND_W + 30 + pad * 2
   const h = 24 + 10 + 30 + pad * 2
   const scale = 1.25
-  const band = pixelSvg(tanksOf(snap, null, NOW), snap.usd, false, BAND_W).replace('<svg ', `<svg x="${pad}" y="${pad}" `)
+  const band = pixelSvg(tanksOf(snap, null, NOW), snap.usd, 'idle', BAND_W).replace('<svg ', `<svg x="${pad}" y="${pad}" `)
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w * scale)}" height="${Math.round(h * scale)}" viewBox="0 0 ${w} ${h}">
   <rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="12" fill="#1f1f1f" stroke="#333"/>
   ${band}
@@ -97,7 +97,7 @@ const states: Record<string, ReturnType<typeof snapshot>> = {
   anxious: snapshot(18, 27, 62),
   frantic: snapshot(18, 27, 92),
   panic: snapshot(18, 27, 97),
-  dead: snapshot(18, 27, 100),
+  asleep: snapshot(18, 27, 100),
 }
 
 mkdirSync(join(root, 'docs/states'), { recursive: true })

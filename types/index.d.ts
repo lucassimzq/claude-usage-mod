@@ -14,11 +14,14 @@ export type Snapshot = {
   usd?: number
 }
 
+/** What Clawd is doing while a turn runs: thinking (bubble), or writing and using tools (laptop). */
+export type Activity = 'idle' | 'thinking' | 'typing'
+
 /** `prev` is what the gauges sweep from; it catches up to `cur` once the sweep ends. */
 export type Gauges = { cur: Snapshot | null; prev: Snapshot | null }
 
 declare module 'claude-code' {
   interface PluginState {
-    'usage-hud': { gauges: Gauges; isHidden: boolean }
+    'usage-hud': { gauges: Gauges; isHidden: boolean; activity: Activity }
   }
 }

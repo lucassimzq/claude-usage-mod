@@ -1,10 +1,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Gauges, Limit, Snapshot } from '../types'
+import type { Activity, Gauges, Limit, Snapshot } from '../types'
 
 const gauges = atom({ plugin: 'usage-hud', key: 'gauges' } as const, { cur: null, prev: null })
 const isHidden = atom({ plugin: 'usage-hud', key: 'isHidden' } as const, false)
+const activity = atom({ plugin: 'usage-hud', key: 'activity' } as const, 'idle')
 
 // #region drawing: pure, no $; scripts/render-docs.ts renders the README images from it
 const SWEEP_MS = 1400
@@ -109,7 +110,7 @@ const CW = 4 // bar cell width
 const GAP = 1
 const BY = 8 // bar top
 const BH = 8 // bar height
-const SPRITE_W = 50
+const SPRITE_W = 56
 const TAG_W = 26
 const PCT_W = 36
 const USD_W = 46
@@ -125,10 +126,10 @@ const TONES: Record<Tone, string> = {
   hot: '#c06565',
 }
 
-type Mood = 'happy' | 'anxious' | 'frantic' | 'panic' | 'dead'
+type Mood = 'happy' | 'anxious' | 'frantic' | 'panic' | 'asleep'
 
 function moodOf(pct: number): Mood {
-  return pct >= 100 ? 'dead' : pct >= 95 ? 'panic' : pct >= 80 ? 'frantic' : pct >= 50 ? 'anxious' : 'happy'
+  return pct >= 100 ? 'asleep' : pct >= 95 ? 'panic' : pct >= 80 ? 'frantic' : pct >= 50 ? 'anxious' : 'happy'
 }
 
 const n2 = (n: number) => Math.round(n * 100) / 100
@@ -174,23 +175,31 @@ function textPixels(s: string, x: number, y: number): string {
 
 const textWidth = (s: string) => (s.length * 4 - 1) * FP
 
-// Clawd, 13 pixels wide: a 9-wide body, arms either side, four legs.
+// Clawd, 13 pixels wide: a 9-wide body, arms either side, four legs. Row 0 is the top
+// of his head; props drawn above it (the headphone band) use negative rows.
 const BODY = Array.from({ length: 7 }, () => '..#########..')
 const ARMS_MID = ['', '', '', '##.........##', '##.........##']
-const ARMS_UP = ['', '##.........##', '##.........##']
 const ARMS_LOW = ['', '', '', '', '', '##.........##', '##.........##']
-const LEGS_TOP = ['', '', '', '', '', '', '', '...#.#.#.#...']
-const LEGS_ALL = [...LEGS_TOP, '...#.#.#.#...']
-const LEGS_A = ['', '', '', '', '', '', '', '', '...#...#.....']
-const LEGS_B = ['', '', '', '', '', '', '', '', '.....#...#...']
+const LEGS = ['', '', '', '', '', '', '', '...#.#.#.#...', '...#.#.#.#...']
+const LEGS_TAPPING = ['', '', '', '', '', '', '', '...#.#.#.#...', '...#.#.#.....']
+const TAP_FOOT = ['', '', '', '', '', '', '', '', '.........#...']
 const BLUSH = ['', '', '', '', '...#.....#...']
+
+// Typing: the arms take turns on the laptop's edge.
+const TYPE_A = ['', '', '', '...........##', '##.........##', '##...........']
+const TYPE_B = ['', '', '', '##...........', '##.........##', '...........##']
+// The back of the lid, the Claude mark on it, and the base underneath.
+const LAPTOP = ['', '', '', '', '', '...#######...', '...###o###...', '...#######...', '.ddddddddddd.']
+
+// Rows -1 to 2: a band over the head and a cup on each side.
+const HEADPHONES = ['...bbbbbbb...', '..b.......b..', '.cc.......cc.', '.cc.......cc.']
 
 const EYES: Record<Mood, [string[], string[]]> = {
   happy: [['.#.', '#.#', '...'], ['.#.', '#.#', '...']],
   anxious: [['.#.', '.#.', '...'], ['.#.', '.#.', '...']],
   frantic: [['#..', '.##', '.##'], ['..#', '##.', '##.']],
   panic: [['###', '#.#', '###'], ['###', '#.#', '###']],
-  dead: [['#.#', '.#.', '#.#'], ['#.#', '.#.', '#.#']],
+  asleep: [['...', '###', '...'], ['...', '###', '...']],
 }
 const CLOSED = ['', '', '...###.###...']
 
@@ -199,76 +208,130 @@ function eyesOf(mood: Mood): string[] {
   return ['', ...l.map((row, y) => `...${row}.${r[y]}...`)]
 }
 
-const DROP = ['.#.', '###', '.#.']
-const HEART = ['.#.#.', '#####', '.###.', '..#..']
-const BANG = ['#', '#', '#', '.', '#']
-const SOUL = ['.##.', '####', '#..#']
+// A mug held in the right hand: coffee on top, the handle against the hand.
+const MUG = ['.ccc', 'wwww', '.www']
+const STEAM_A = ['..#.', '.#..']
+const STEAM_B = ['.#..', '..#.']
+const NOTE = ['..##', '..#.', '..#.', '###.', '##..']
+const DROP = ['.#.', '###', '###', '.#.']
+// A thought bubble with a clock in it; the hand points up, right, down, left in turn.
+const BUBBLE = ['.#########.', '#.........#', '#.........#', '#.........#', '#.........#', '#.........#', '#.........#', '#.........#', '.#########.']
+const CLOCK = ['..###..', '.#...#.', '#.....#', '#..#..#', '#.....#', '.#...#.', '..###..']
+const HANDS = [['', '...#', '...#'], ['', '', '', '....##'], ['', '', '', '', '...#', '...#'], ['', '', '', '.##']]
+const FLAME_A = ['..r.', '.rr.', 'ryyr', '.yy.']
+const FLAME_B = ['.r..', '.rr.', 'ryyr', '.yy.']
+const ZED = ['#####', '...#.', '..#..', '.#...', '#####']
+// A thought bubble with three dots lighting up in turn, while Claude thinks.
+const THOUGHT = ['.#########.', '#.........#', '#.........#', '#.........#', '#.........#', '#.........#', '.#########.']
+const THOUGHT_DOTS = [['', '', '', '...#'], ['', '', '', '.....#'], ['', '', '', '.......#']]
 
-function clawdSvg(mood: Mood, isWorking: boolean): string {
-  const path = (d: string, fill: string, extra = '') => `<path d="${d}" fill="${fill}"${extra}/>`
+const COLORS = {
+  band: '#9aa0a8',
+  cups: '#8f7fc9',
+  laptop: '#7d828a',
+  base: '#5f646b',
+  logo: '#f0a07f',
+  mug: '#d8d0c4',
+  coffee: '#8a5a3c',
+  steam: '#a8a8a8',
+  note: '#a99be0',
+  drop: '#86a8c4',
+  clock: '#c4a05a',
+  flameOut: '#c06565',
+  flameIn: '#c4a05a',
+  zed: '#9aa6c4',
+  sleepy: '#b9775f',
+}
+
+// Each mood is a small scene, not a dance: Clawd holds still and one prop moves, slowly.
+function clawdSvg(mood: Mood, doing: Activity): string {
+  const path = (d: string, fill: string, extra = '') => (d ? `<path d="${d}" fill="${fill}"${extra}/>` : '')
+  const grid = (g: string[], fill: string, ch = '#', ox = 0, oy = 0, p = P) => path(pixels(g, ox, oy, p, ch), fill)
   const toggle = (dur: string, first: boolean) =>
     `<animate attributeName="opacity" values="${first ? '1;0' : '0;1'}" keyTimes="0;0.5" calcMode="discrete" dur="${dur}" repeatCount="indefinite"/>`
-  const motion: Record<Mood, string> = {
-    happy: 'values="0 0;0 -2;0 0" keyTimes="0;0.9;0.95" dur="5s"',
-    anxious: '',
-    frantic: 'values="0 0;1 0;0 0" keyTimes="0;0.8;0.9" dur="2s"',
-    panic: 'values="0 0;-1 0;1 0;0 0" keyTimes="0;0.7;0.8;0.9" dur="1.2s"',
-    dead: '',
+  // Something drifting up and fading: notes, Z's, a sweat drop running down.
+  const drift = (inner: string, x: number, ys: number[], dur: number, begin = 0) => {
+    const values = ys.map(y => `${x} ${y}`).join(';')
+    const keys = ys.map((_, k) => n2(k / ys.length)).join(';')
+    const fade = ys.map((_, k) => (k === ys.length - 1 ? 0 : 1)).join(';')
+    return `<g transform="translate(${x} ${ys[0]})">${inner}
+      <animateTransform attributeName="transform" type="translate" values="${values}" keyTimes="${keys}" calcMode="discrete" dur="${dur}s" begin="-${begin}s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="${fade}" keyTimes="${keys}" calcMode="discrete" dur="${dur}s" begin="-${begin}s" repeatCount="indefinite"/></g>`
   }
-  const body = mood === 'dead' ? '#8f7a70' : CLAWD
-  const flash =
-    mood === 'panic'
-      ? '<animate attributeName="fill" values="#D97757;#c06565" keyTimes="0;0.5" calcMode="discrete" dur="1.6s" repeatCount="indefinite"/>'
-      : ''
-  const arms =
-    mood === 'frantic' || mood === 'panic'
-      ? `<g>${path(pixels(ARMS_MID, 0, 0, P), body)}${toggle(mood === 'panic' ? '1.2s' : '2s', true)}</g>` +
-        `<g>${path(pixels(ARMS_UP, 0, 0, P), body)}${toggle(mood === 'panic' ? '1.2s' : '2s', false)}</g>`
-      : path(pixels(mood === 'dead' ? ARMS_LOW : ARMS_MID, 0, 0, P), body)
-  const legs =
-    isWorking && mood !== 'dead'
-      ? path(pixels(LEGS_TOP, 0, 0, P), body) +
-        `<g>${path(pixels(LEGS_A, 0, 0, P), body)}${toggle('1s', true)}</g>` +
-        `<g>${path(pixels(LEGS_B, 0, 0, P), body)}${toggle('1s', false)}</g>`
-      : path(pixels(LEGS_ALL, 0, 0, P), body)
-  // Anxious Clawd blinks: open most of the time, a flick of closed eyes.
+
+  const typing = doing === 'typing' && mood !== 'asleep'
+  const thinking = doing === 'thinking' && mood !== 'asleep'
+  const holdsMug = !typing && (mood === 'anxious' || mood === 'panic')
+  const body = mood === 'asleep' ? COLORS.sleepy : CLAWD
+  const fx = (holdsMug ? 16 : 13) * P + 1 // where the props on the right begin
+
+  const legs = typing
+    ? ''
+    : mood === 'happy'
+      ? grid(LEGS_TAPPING, body) + `<g>${grid(TAP_FOOT, body)}${toggle('1.4s', true)}</g>`
+      : grid(LEGS, body)
+  const arms = typing
+    ? `<g>${grid(TYPE_A, body)}${toggle('0.9s', true)}</g><g opacity="0">${grid(TYPE_B, body)}${toggle('0.9s', false)}</g>`
+    : grid(mood === 'asleep' ? ARMS_LOW : ARMS_MID, body)
   const eyes =
     mood === 'anxious'
-      ? `<g>${path(pixels(eyesOf(mood), 0, 0, P), INK)}<animate attributeName="opacity" values="1;0" keyTimes="0;0.94" calcMode="discrete" dur="5s" repeatCount="indefinite"/></g>` +
-        `<g opacity="0">${path(pixels(CLOSED, 0, 0, P), INK)}<animate attributeName="opacity" values="0;1" keyTimes="0;0.94" calcMode="discrete" dur="5s" repeatCount="indefinite"/></g>`
-      : path(pixels(eyesOf(mood), 0, 0, P), INK)
-  const blush = mood === 'happy' ? path(pixels(BLUSH, 0, 0, P), '#dba3ae') : ''
-
-  const fx = 13 * P + 1
-  const drop = (x: number, begin: string) =>
-    `<g transform="translate(${x} 1)">${path(pixels(DROP, 0, 0, 1.2), '#86a8c4')}
-      <animateTransform attributeName="transform" type="translate" values="${x} 1;${x} 4;${x} 7;${x} 10" keyTimes="0;0.25;0.5;0.75" calcMode="discrete" dur="3s" begin="${begin}" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="1;1;1;0" keyTimes="0;0.25;0.5;0.75" calcMode="discrete" dur="3s" begin="${begin}" repeatCount="indefinite"/></g>`
-  const effects: Record<Mood, string> = {
-    happy: `<g opacity="0" transform="translate(${fx} 8)">${path(pixels(HEART, 0, 0, 1.2), '#cf8a98')}
-      <animateTransform attributeName="transform" type="translate" values="${fx} 8;${fx} 5;${fx} 2;${fx} -1" keyTimes="0;0.62;0.72;0.82" calcMode="discrete" dur="8s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0;1;1;1;0" keyTimes="0;0.6;0.72;0.82;0.92" calcMode="discrete" dur="8s" repeatCount="indefinite"/></g>`,
-    anxious: drop(fx, '0s'),
-    frantic:
-      drop(fx, '0s') +
-      drop(fx + 4, '1.5s') +
-      `<g transform="translate(${fx + 9} 1)">${path(pixels(BANG, 0, 0, 1.6), '#c4a05a')}${toggle('2s', true)}</g>`,
-    panic:
-      drop(fx, '0s') +
-      `<g transform="translate(${fx + 4} 1)">${path(pixels(BANG, 0, 0, 1.6) + pixels(BANG, 3.2, 0, 1.6), '#c06565')}${toggle('1.2s', true)}</g>`,
-    dead: `<g transform="translate(8 -3)">${path(pixels(SOUL, 0, 0, 1.4), 'rgba(255,255,255,0.75)')}
-      <animateTransform attributeName="transform" type="translate" values="8 2;8 -1;8 -4;8 -7" keyTimes="0;0.25;0.5;0.75" calcMode="discrete" dur="6s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="1;0.8;0.5;0.2" keyTimes="0;0.25;0.5;0.75" calcMode="discrete" dur="6s" repeatCount="indefinite"/></g>`,
-  }
-  const move = motion[mood]
-    ? `<animateTransform attributeName="transform" type="translate" ${motion[mood]} calcMode="discrete" repeatCount="indefinite"/>`
+      ? `<g>${grid(eyesOf(mood), INK)}<animate attributeName="opacity" values="1;0" keyTimes="0;0.94" calcMode="discrete" dur="5s" repeatCount="indefinite"/></g>` +
+        `<g opacity="0">${grid(CLOSED, INK)}<animate attributeName="opacity" values="0;1" keyTimes="0;0.94" calcMode="discrete" dur="5s" repeatCount="indefinite"/></g>`
+      : grid(eyesOf(mood), INK)
+  const blush = mood === 'happy' ? grid(BLUSH, '#dba3ae') : ''
+  const headphones = mood === 'happy' ? grid(HEADPHONES, COLORS.band, 'b', 0, -P) + grid(HEADPHONES, COLORS.cups, 'c', 0, -P) : ''
+  const laptop = typing ? grid(LAPTOP, COLORS.laptop) + grid(LAPTOP, COLORS.logo, 'o') + grid(LAPTOP, COLORS.base, 'd') : ''
+  const mug = holdsMug
+    ? grid(MUG, COLORS.coffee, 'c', 12 * P, 2 * P) +
+      grid(MUG, COLORS.mug, 'w', 12 * P, 2 * P) +
+      `<g>${grid(STEAM_A, COLORS.steam, '#', 12 * P, 0)}${toggle('1.6s', true)}</g>` +
+      `<g opacity="0">${grid(STEAM_B, COLORS.steam, '#', 12 * P, 0)}${toggle('1.6s', false)}</g>`
     : ''
-  return `<g transform="translate(2 5)">
-    <g>${move}
-      <path d="${pixels(BODY, 0, 0, P)}" fill="${body}">${flash}</path>
-      ${arms}${legs}${eyes}${blush}
-    </g>
-    ${effects[mood]}
+
+  const note = grid(NOTE, COLORS.note, '#', 0, 0, 1.1)
+  const sweat = drift(grid(DROP, COLORS.drop, '#', 0, 0, 1.2), -4, [1, 4, 7, 10], 4)
+  const flames = (x: number) =>
+    `<g>${grid(FLAME_A, COLORS.flameOut, 'r', x, 12, 1.4)}${grid(FLAME_A, COLORS.flameIn, 'y', x, 12, 1.4)}${toggle('1s', true)}</g>` +
+    `<g opacity="0">${grid(FLAME_B, COLORS.flameOut, 'r', x, 12, 1.4)}${grid(FLAME_B, COLORS.flameIn, 'y', x, 12, 1.4)}${toggle('1s', false)}</g>`
+  // The clock's hand steps round once every four seconds.
+  const bx = fx + 2
+  const by = -4
+  const cp = 1.1
+  const clock =
+    grid(['#'], MUTED, '#', fx, 6, cp) +
+    grid(BUBBLE, MUTED, '#', bx, by, cp) +
+    grid(CLOCK, COLORS.clock, '#', bx + 2 * cp, by + 1 * cp, cp) +
+    HANDS.map(
+      (h, k) =>
+        `<g opacity="${k === 0 ? 1 : 0}">${grid(h, COLORS.clock, '#', bx + 2 * cp, by + 1 * cp, cp)}<animate attributeName="opacity" values="${HANDS.map((_, j) => (j === k ? 1 : 0)).join(';')}" keyTimes="0;0.25;0.5;0.75" calcMode="discrete" dur="4s" repeatCount="indefinite"/></g>`,
+    ).join('')
+
+  const tp = 1.1
+  const thought =
+    grid(['#'], MUTED, '#', fx - 1, 6, tp) +
+    grid(['#'], MUTED, '#', fx + 1, 3, 1.5) +
+    grid(THOUGHT, MUTED, '#', fx + 3, -5, tp) +
+    path(pixels(['', '', '', '...#.#.#'], fx + 3, -5, tp), MUTED, ' opacity="0.4"') +
+    THOUGHT_DOTS.map(
+      (d, k) =>
+        `<g opacity="${k === 0 ? 1 : 0}">${grid(d, '#e6e6e6', '#', fx + 3, -5, tp)}<animate attributeName="opacity" values="${THOUGHT_DOTS.map((_, j) => (j === k ? 1 : 0)).join(';')}" keyTimes="0;0.33;0.67" calcMode="discrete" dur="1.8s" repeatCount="indefinite"/></g>`,
+    ).join('')
+
+  // While Claude thinks, the bubble takes the props' place on the right.
+  const right: Record<Mood, string> = {
+    happy: drift(note, fx, [8, 5, 2, -1], 3.2) + drift(note, fx + 6, [8, 5, 2, -1], 3.2, 1.6),
+    anxious: '',
+    frantic: clock,
+    panic: flames(fx),
+    asleep:
+      drift(grid(ZED, COLORS.zed, '#', 0, 0, 1.1), fx, [6, 3, 0, -3], 4) +
+      drift(grid(ZED, COLORS.zed, '#', 0, 0, 0.8), fx + 7, [6, 3, 0, -3], 4, 2),
+  }
+  const left: Record<Mood, string> = { happy: '', anxious: sweat, frantic: sweat, panic: flames(-7), asleep: '' }
+  return `<g transform="translate(8 5)">
+    ${legs}<path d="${pixels(BODY, 0, 0, P)}" fill="${body}"/>
+    ${headphones}${eyes}${blush}${arms}${laptop}${mug}
+    ${left[mood]}${thinking ? thought : right[mood]}
   </g>`
 }
 
@@ -336,7 +399,7 @@ function noteSvg(note: string, x: number, color: string): { svg: string; width: 
   return { svg, width }
 }
 
-function pixelSvg(list: Tank[], usd: number | undefined, isWorking: boolean, width: number): string {
+function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width: number): string {
   const worst = list.reduce((a, b) => (b.pct > a.pct ? b : a))
   const mood = moodOf(worst.pct)
   const text = noteOf(worst)
@@ -359,7 +422,7 @@ function pixelSvg(list: Tank[], usd: number | undefined, isWorking: boolean, wid
     units.push(`<path d="${textPixels(s, width - textWidth(s) - 2, ty)}" fill="${MUTED}"/>`)
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" shape-rendering="crispEdges">
-  ${clawdSvg(mood, isWorking)}
+  ${clawdSvg(mood, doing)}
   ${note?.svg ?? ''}
   ${units.join('\n')}
 </svg>`
@@ -370,7 +433,7 @@ const FACES: Record<Mood, string> = {
   anxious: '(・_・;)',
   frantic: '(°□°;)',
   panic: '(ﾟДﾟ;)',
-  dead: '(x_x)',
+  asleep: '(-_-) zZ',
 }
 
 // #endregion drawing
@@ -428,6 +491,15 @@ async function refresh($: EngineInterface) {
   $.ui.toast('Usage refreshed', { timeoutMs: 1500 })
 }
 
+// Writes only on a change, since a response streams many chunks of the same kind.
+let doing: Activity = 'idle'
+
+async function setActivity($: EngineInterface, next: Activity) {
+  if (next === doing) return
+  doing = next
+  await update($, activity, () => next)
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -439,6 +511,28 @@ export const register: Register = on => {
     $.clock.every(60_000, () => {
       void update($, gauges, (g: Gauges) => ({ cur: g.cur, prev: g.cur }))
     })
+    return next(e)
+  })
+
+  // What Claude is doing, from the main conversation only, so subagents don't flicker it.
+  // A request is thinking until text or a tool call arrives; then it's at the laptop.
+  on('turn.step', async function* ($, e, next) {
+    if (e.agentId) return yield* next(e)
+    await setActivity($, 'thinking')
+    for await (const chunk of next(e)) {
+      if (chunk.kind === 'thinking') await setActivity($, 'thinking')
+      else if (chunk.kind === 'text' || chunk.kind === 'tool' || chunk.kind === 'input') await setActivity($, 'typing')
+      yield chunk
+    }
+  })
+
+  on('tool.call', async ($, e, next) => {
+    if (!e.agentId) await setActivity($, 'typing')
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    await setActivity($, 'idle')
     return next(e)
   })
 
@@ -469,7 +563,7 @@ export const register: Register = on => {
       return (
         <Box flexDirection="row" alignItems="center" gap={1}>
           <Svg
-            source={pixelSvg(list, cur.usd, e.props.isWorking, width)}
+            source={pixelSvg(list, cur.usd, e.props.isWorking ? await read($, activity) : 'idle', width)}
             alt={list.map(t => `${t.tag} ${Math.round(t.pct)}%`).join(', ')}
             width={width}
             height={HEIGHT}

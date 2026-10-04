@@ -10,31 +10,33 @@
   <a href="https://github.com/lucassimzq"><img src="https://img.shields.io/badge/made%20by-lucassimzq-111?style=for-the-badge" alt="Made by lucassimzq"></a>
 </p>
 
-Keep your context window, 5-hour session limit and weekly limit in view above the Claude Code prompt, with no menu to open. A pixel Clawd sits beside them and gets more nervous the closer you get to a limit.
+Keep your context window, 5-hour session limit and weekly limit in view above the Claude Code prompt, with no menu to open. A pixel Clawd sits beside them, doing his own thing, and gets more nervous the closer you get to a limit.
 
 ## How it looks
 
 Clawd's mood follows whichever of the three numbers is highest.
 
-**Under 50%: happy.** All calm, so the bars get the whole row.
+**Under 50%: happy.** Headphones on, tapping a foot, music notes drifting up.
 
-<img src="docs/states/happy.svg" alt="Happy Clawd beside three green bars" width="100%">
+<img src="docs/states/happy.svg" alt="Clawd in headphones beside three green bars" width="100%">
 
-**50% and up: anxious.** A sweat drop, and a note saying which limit is filling up.
+**50% and up: anxious.** Nervously sipping coffee, with a note saying which limit is filling up.
 
-<img src="docs/states/anxious.svg" alt="Anxious Clawd with the note: Weekly limit is over half used" width="100%">
+<img src="docs/states/anxious.svg" alt="Clawd holding a coffee, with the note: Weekly limit is over half used" width="100%">
 
-**80% and up: frantic.**
+**80% and up: frantic.** Watching the clock tick.
 
-<img src="docs/states/frantic.svg" alt="Frantic Clawd with the note: You're almost reaching your weekly limit" width="100%">
+<img src="docs/states/frantic.svg" alt="Clawd with a clock thought bubble and the note: You're almost reaching your weekly limit" width="100%">
 
-**95% and up: panic.**
+**95% and up: this is fine.** Coffee in hand, flames either side.
 
-<img src="docs/states/panic.svg" alt="Panicking Clawd with the note: Weekly limit nearly used up" width="100%">
+<img src="docs/states/panic.svg" alt="Clawd holding a coffee between small flames, with the note: Weekly limit nearly used up" width="100%">
 
-**100%: done for now.** The note says when the limit resets.
+**100%: asleep** until the limit resets, and the note says when.
 
-<img src="docs/states/dead.svg" alt="Grey Clawd with X eyes and the note: Weekly limit reached, resets in 2d 4h" width="100%">
+<img src="docs/states/asleep.svg" alt="Sleeping Clawd with floating Z's and the note: Weekly limit reached, resets in 2d 4h" width="100%">
+
+While Claude works, Clawd joins in: a thought bubble while Claude thinks, and a little laptop while it writes or uses tools.
 
 ### Reading the band
 
