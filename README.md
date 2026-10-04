@@ -1,55 +1,59 @@
-# claude-usage-mod
+<p align="center">
+  <img src="docs/banner.svg" alt="claude-usage-mod: your Claude Code limits above the prompt, watched over by Clawd" width="100%">
+</p>
 
-A Claude Code mod that keeps your usage in view above the prompt: a pixel Clawd whose mood follows how close you are to your limits, and three flat 8-bit bars for the context window, the 5-hour session limit and the weekly limit.
+<p align="center">
+  <img src="https://img.shields.io/badge/Claude%20Code-mod-D97757?style=for-the-badge" alt="Claude Code mod">
+  <img src="https://img.shields.io/badge/version-0.1.0-6b9e7a?style=for-the-badge" alt="Version 0.1.0">
+  <img src="https://img.shields.io/badge/requires-2.1.286%2B-444?style=for-the-badge" alt="Requires Claude Code 2.1.286 or later">
+  <a href="https://github.com/lucassimzq"><img src="https://img.shields.io/badge/made%20by-lucassimzq-111?style=for-the-badge" alt="Made by lucassimzq"></a>
+</p>
 
-```
-[Clawd]  ctx ▮▮▮▯▯▯▯▯ 18%   5h ▮▮▮▮▯▯▯▯ 27%   7d ▮▮▮▮▮▮▮▮▮ 92%   $3.17
-```
+Keep your context window, 5-hour session limit and weekly limit in view above the Claude Code prompt, with no menu to open. A pixel Clawd sits beside them and gets more nervous the closer you get to a limit.
 
-## Clawd's moods
+## How it looks
 
-The mood follows the highest of the three numbers.
+Clawd's mood follows whichever of the three numbers is highest.
 
-| Usage | Mood | Clawd |
-| --- | --- | --- |
-| under 50% | happy | `^ ^` eyes, blush, an occasional hop and heart |
-| 50% and up | anxious | blinking, a slow sweat drop |
-| 80% and up | frantic | worried eyes, two sweat drops, `!` |
-| 95% and up | panic | wide eyes, red flash, `!!` |
-| 100% | dead | grey, X eyes, a small ghost floats up |
+**Under 50%: happy.** All calm, so the bars get the whole row.
 
-While Claude is working, Clawd's legs walk.
+<img src="docs/states/happy.svg" alt="Happy Clawd beside three green bars" width="100%">
 
-From 50% up, a small speech bubble beside Clawd names whichever figure is highest, like "You're almost reaching your weekly limit"; once a limit is used up it says when it resets. Below 50% the bubble goes away and the bars take the room back.
+**50% and up: anxious.** A sweat drop, and a note saying which limit is filling up.
 
-## The bars
+<img src="docs/states/anxious.svg" alt="Anxious Clawd with the note: Halfway through your weekly limit" width="100%">
+
+**80% and up: frantic.**
+
+<img src="docs/states/frantic.svg" alt="Frantic Clawd with the note: You're almost reaching your weekly limit" width="100%">
+
+**95% and up: panic.**
+
+<img src="docs/states/panic.svg" alt="Panicking Clawd with the note: Weekly limit nearly used up" width="100%">
+
+**100%: done for now.** The note says when the limit resets.
+
+<img src="docs/states/dead.svg" alt="Grey Clawd with X eyes and the note: Weekly limit reached, resets in 2d 4h" width="100%">
+
+### Reading the band
 
 - **`ctx`**: how full the context window is.
-- **`5h`** and **`7d`**: the session and weekly plan limits. The small arrow above each one marks how far through that window you are, so a bar that runs past its arrow is using the limit faster than the clock.
-- Cells are green under 50%, amber from 50% and red from 80%.
-- The session's cost sits at the right end.
+- **`5h`** and **`7d`**: your session and weekly plan limits. The small arrow above each bar marks how far through that window you are; a bar past its arrow is using the limit faster than the clock.
+- **Colors**: green under 50%, amber from 50%, red from 80%.
+- **`$`**: what this session has cost so far.
+- **`↻`**: re-reads the figures right away.
 
-You also get a toast when a limit passes 50%, 80% or 95%. The `↻` button at the right end re-reads the figures on demand (press `r` while the band has focus in the terminal), and `/usage-hud` hides or shows the band.
-
-On the desktop Code tab it draws as pixel art; in the terminal it falls back to text bars with a face like `(°□°;)`.
+You also get a short pop-up when a limit passes 50%, 80% or 95%.
 
 ## Install
 
-It is a plugin of function hooks, so it needs a Claude Code build that has them (2.1.286 or later).
-
-Clone it:
+Clone the repo:
 
 ```bash
 git clone https://github.com/lucassimzq/claude-usage-mod.git ~/claude-usage-mod
 ```
 
-Then load it for one session:
-
-```bash
-claude --plugin-dir ~/claude-usage-mod
-```
-
-Or load it in every session, including the desktop app, by adding it to the `env` block of `~/.claude/settings.json`:
+To load it in every session, including the desktop app, add it to the `env` block of `~/.claude/settings.json`:
 
 ```json
 {
@@ -59,8 +63,19 @@ Or load it in every session, including the desktop app, by adding it to the `env
 }
 ```
 
-## Notes
+Or try it for a single terminal session:
 
-- Cloud session credits are not shown: plugins can't read that figure.
-- Plan limits arrive with API responses, so a fresh session has none until its first reply. The mod keeps the last ones it saw and shows them faded until then; a window whose reset time has passed since shows as empty. The very first session after installing shows only `ctx` until Claude replies once. Plan limits only exist on a subscription.
-- The desktop band is sized from the prompt's width in code-font cells, at about 7.8px per cell. If it ends short of the edge or overflows, change `PX_PER_COLUMN` in [`hooks/register.tsx`](hooks/register.tsx).
+```bash
+claude --plugin-dir ~/claude-usage-mod
+```
+
+You need Claude Code 2.1.286 or later. The `5h` and `7d` bars need a Claude subscription; right after installing they appear with Claude's first reply, and from then on every restart shows the last figures straight away.
+
+## Use
+
+- **`/usage-hud`** hides or shows the band.
+- **`↻`** refreshes the figures (`r` in the terminal while the band has focus).
+
+The desktop Code tab draws the pixel version. The terminal shows text bars with a face like `(°□°;)`.
+
+To update, run `git pull` in `~/claude-usage-mod`.

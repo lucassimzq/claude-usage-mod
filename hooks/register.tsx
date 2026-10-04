@@ -6,6 +6,7 @@ import type { Gauges, Limit, Snapshot } from '../types'
 const gauges = atom({ plugin: 'usage-hud', key: 'gauges' } as const, { cur: null, prev: null })
 const isHidden = atom({ plugin: 'usage-hud', key: 'isHidden' } as const, false)
 
+// #region drawing: pure, no $; scripts/render-docs.ts renders the README images from it
 const SWEEP_MS = 1400
 const WARN_AT = [50, 80, 95]
 
@@ -371,6 +372,8 @@ const FACES: Record<Mood, string> = {
   panic: '(ﾟДﾟ;)',
   dead: '(x_x)',
 }
+
+// #endregion drawing
 
 function bar(pct: number, cells = 5): string {
   const full = Math.round((Math.min(100, pct) / 100) * cells)
