@@ -12,6 +12,8 @@
 
 Keep your context window, 5-hour session limit and weekly limit in view above the Claude Code prompt, with no menu to open. A pixel Clawd sits beside them, doing his own thing, and gets more nervous the closer you get to a limit.
 
+> This is an unofficial fan project, not affiliated with or endorsed by Anthropic. Claude, Claude Code and Clawd are trademarks and characters of Anthropic.
+
 ## How it looks
 
 Clawd's mood follows whichever of the three numbers is highest.
@@ -82,3 +84,7 @@ You need Claude Code 2.1.286 or later. The `5h` and `7d` bars need a Claude subs
 The desktop Code tab draws the pixel version. The terminal shows text bars with a face like `(°□°;)`.
 
 To update, run `git pull` in `~/claude-usage-mod`.
+
+## Disclaimer
+
+This is an independent fan project. It is not made, sponsored or endorsed by Anthropic. Claude, Claude Code and Clawd belong to Anthropic, and the pixel Clawd here is fan art of their mascot. If Anthropic asks for any of this to change, it will.
