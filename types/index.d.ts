@@ -1,4 +1,10 @@
-export type Limit = { kind: string; pct: number; resetsAt?: string }
+export type Limit = {
+  kind: string
+  pct: number
+  resetsAt?: string
+  /** Carried over from an earlier session: no response has reported this window yet. */
+  isSaved?: boolean
+}
 
 export type Snapshot = {
   ctxPct: number

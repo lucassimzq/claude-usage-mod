@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Gauges, Snapshot } from '../types'
+import type { Gauges, Limit, Snapshot } from '../types'
 
 const gauges = atom({ plugin: 'usage-hud', key: 'gauges' } as const, { cur: null, prev: null })
 const isHidden = atom({ plugin: 'usage-hud', key: 'isHidden' } as const, false)
@@ -62,6 +62,8 @@ type Tank = {
   name: string
   /** Time until the window resets, as `2d 4h`; absent for the context window. */
   resetIn?: string
+  /** A figure from an earlier session, waiting for this one's first response. */
+  isSaved?: boolean
   tip: string
 }
 
@@ -89,6 +91,7 @@ function tanksOf(cur: Snapshot, prev: Snapshot | null, now: number): Tank[] {
       elapsed,
       name: `${meta.name.toLowerCase()} limit`,
       resetIn: left === undefined ? undefined : untilReset(left),
+      isSaved: l.isSaved,
       tip:
         `${meta.name} limit · ${l.pct}% used` +
         (left !== undefined ? ` · resets in ${untilReset(left)}` : '') +
@@ -344,7 +347,7 @@ function pixelSvg(list: Tank[], usd: number | undefined, isWorking: boolean, wid
   const units = list.map((t, i) => {
     const bar = barSvg(t, i, rw)
     const pct = `${Math.round(t.pct)}%`
-    return `<g transform="translate(${n2(left + i * unit)} 0)">
+    return `<g transform="translate(${n2(left + i * unit)} 0)"${t.isSaved ? ' opacity="0.5"' : ''}>
       <path d="${textPixels(t.tag, 0, ty)}" fill="${MUTED}"/>
       <g transform="translate(${TAG_W} 0)">${bar.svg}</g>
       <path d="${textPixels(pct, TAG_W + bar.width + 5, ty)}" fill="${TONES[tone(t.pct)]}"/>
@@ -376,7 +379,29 @@ function bar(pct: number, cells = 5): string {
 
 let settle: { cancel: () => void } | undefined
 
-async function take($: EngineInterface, snap: Snapshot) {
+const SAVED = 'limits'
+
+// The limits arrive with API responses, so a new session has none until its first
+// reply. Keep the last ones in the store and stand them in until then; a window whose
+// reset time has passed since is shown empty.
+async function withSaved($: EngineInterface, snap: Snapshot): Promise<Snapshot> {
+  if (snap.limits.length > 0) {
+    await $.store.set(SAVED, snap.limits)
+    return snap
+  }
+  const saved = (await $.store.get(SAVED)) as Limit[] | undefined
+  if (!Array.isArray(saved) || saved.length === 0) return snap
+  const now = await $.clock.now()
+  const limits = saved.map(l =>
+    l.resetsAt && Date.parse(l.resetsAt) <= now
+      ? { kind: l.kind, pct: 0, isSaved: true }
+      : { ...l, isSaved: true },
+  )
+  return { ...snap, limits }
+}
+
+async function take($: EngineInterface, fresh: Snapshot) {
+  const snap = await withSaved($, fresh)
   const before = (await read($, gauges)).cur
   await update($, gauges, g => ({ cur: snap, prev: g.cur }))
   for (const l of snap.limits) {
@@ -463,7 +488,7 @@ export const register: Register = on => {
             <Text>
               <Text dimColor>{t.tag} </Text>
               <Text color={color(t.pct)}>{bar(t.pct)}</Text>
-              <Text bold> {Math.round(t.pct)}</Text>
+              <Text bold dimColor={t.isSaved}> {Math.round(t.pct)}</Text>
             </Text>
           ))}
           {cur.usd !== undefined ? <Text dimColor>${cur.usd.toFixed(2)}</Text> : null}

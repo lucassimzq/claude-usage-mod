@@ -62,5 +62,5 @@ Or load it in every session, including the desktop app, by adding it to the `env
 ## Notes
 
 - Cloud session credits are not shown: plugins can't read that figure.
-- Plan limits only appear on a subscription, after the first response of the session reports them.
+- Plan limits arrive with API responses, so a fresh session has none until its first reply. The mod keeps the last ones it saw and shows them faded until then; a window whose reset time has passed since shows as empty. The very first session after installing shows only `ctx` until Claude replies once. Plan limits only exist on a subscription.
 - The desktop band is sized from the prompt's width in code-font cells, at about 7.8px per cell. If it ends short of the edge or overflows, change `PX_PER_COLUMN` in [`hooks/register.tsx`](hooks/register.tsx).
