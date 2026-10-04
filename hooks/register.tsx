@@ -58,6 +58,10 @@ type Tank = {
   from: number
   /** How far through its window the clock is, 0 to 1: the pace mark. */
   elapsed?: number
+  /** What the note calls it: `context window`, `weekly limit`. */
+  name: string
+  /** Time until the window resets, as `2d 4h`; absent for the context window. */
+  resetIn?: string
   tip: string
 }
 
@@ -68,6 +72,7 @@ function tanksOf(cur: Snapshot, prev: Snapshot | null, now: number): Tank[] {
       tag: 'ctx',
       pct: cur.ctxPct,
       from: prev?.ctxPct ?? 0,
+      name: 'context window',
       tip: `Context window · ${used}${tokens(cur.ctxWindow)} tokens`,
     },
   ]
@@ -82,6 +87,8 @@ function tanksOf(cur: Snapshot, prev: Snapshot | null, now: number): Tank[] {
       pct: l.pct,
       from: prev?.limits.find(p => p.kind === l.kind)?.pct ?? 0,
       elapsed,
+      name: `${meta.name.toLowerCase()} limit`,
+      resetIn: left === undefined ? undefined : untilReset(left),
       tip:
         `${meta.name} limit · ${l.pct}% used` +
         (left !== undefined ? ` · resets in ${untilReset(left)}` : '') +
@@ -103,6 +110,7 @@ const TAG_W = 26
 const PCT_W = 36
 const USD_W = 46
 const PX_PER_COLUMN = 7.8 // the desktop counts the band in code-font cells
+const REFRESH_W = 30 // room kept at the right for the refresh button
 const CLAWD = '#D97757'
 const INK = '#1b1b1b'
 const MUTED = '#8b9099'
@@ -298,16 +306,45 @@ function barSvg(t: Tank, i: number, rw: number): { svg: string; width: number } 
   return { svg, width }
 }
 
-function pixelSvg(list: Tank[], usd: number | undefined, isWorking: boolean, columns: number): string {
-  const width = Math.max(420, Math.round(columns * PX_PER_COLUMN))
-  const mood = moodOf(Math.max(...list.map(t => t.pct)))
-  const unit = (width - SPRITE_W - (usd === undefined ? 0 : USD_W)) / list.length
+// A short line beside Clawd about whichever figure is highest; none while all is calm.
+function noteOf(worst: Tank): string | undefined {
+  const pct = worst.pct
+  if (pct >= 100) return `${cap(worst.name)} reached${worst.resetIn ? ` · resets in ${worst.resetIn}` : ''}`
+  if (pct >= 95) return `${cap(worst.name)} nearly used up`
+  if (pct >= 80) return `You're almost reaching your ${worst.name}`
+  if (pct >= 50) return `Halfway through your ${worst.name}`
+  return undefined
+}
+
+const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
+
+const NOTE_CHAR = 5.9 // a 9.5px monospace advance, with a little slack
+
+function noteSvg(note: string, x: number, color: string): { svg: string; width: number } {
+  const width = Math.round(note.length * NOTE_CHAR + 14)
+  const esc = note.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')
+  // A square speech bubble with a stepped pixel tail pointing back at Clawd.
+  const svg = `<g transform="translate(${x} 0)">
+    <path d="${pixels(['..#', '.##', '..#'], -4.5, 9, 1.5)}" fill="${MUTED}" opacity="0.45"/>
+    <rect x="0.5" y="5.5" width="${width - 1}" height="13" fill="${MUTED}" fill-opacity="0.08" stroke="${MUTED}" stroke-opacity="0.45"/>
+    <text x="6" y="15.2" fill="${color}" style="font: 500 9.5px ui-monospace, SFMono-Regular, Menlo, monospace">${esc}</text>
+  </g>`
+  return { svg, width }
+}
+
+function pixelSvg(list: Tank[], usd: number | undefined, isWorking: boolean, width: number): string {
+  const worst = list.reduce((a, b) => (b.pct > a.pct ? b : a))
+  const mood = moodOf(worst.pct)
+  const text = noteOf(worst)
+  const note = text ? noteSvg(text, SPRITE_W, TONES[tone(worst.pct)]) : undefined
+  const left = SPRITE_W + (note ? note.width + 12 : 0)
+  const unit = (width - left - (usd === undefined ? 0 : USD_W)) / list.length
   const rw = Math.max(40, unit - TAG_W - PCT_W - 6)
   const ty = BY + (BH - 5 * FP) / 2
   const units = list.map((t, i) => {
     const bar = barSvg(t, i, rw)
     const pct = `${Math.round(t.pct)}%`
-    return `<g transform="translate(${n2(SPRITE_W + i * unit)} 0)">
+    return `<g transform="translate(${n2(left + i * unit)} 0)">
       <path d="${textPixels(t.tag, 0, ty)}" fill="${MUTED}"/>
       <g transform="translate(${TAG_W} 0)">${bar.svg}</g>
       <path d="${textPixels(pct, TAG_W + bar.width + 5, ty)}" fill="${TONES[tone(t.pct)]}"/>
@@ -319,6 +356,7 @@ function pixelSvg(list: Tank[], usd: number | undefined, isWorking: boolean, col
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" shape-rendering="crispEdges">
   ${clawdSvg(mood, isWorking)}
+  ${note?.svg ?? ''}
   ${units.join('\n')}
 </svg>`
 }
@@ -355,6 +393,13 @@ async function take($: EngineInterface, snap: Snapshot) {
   })
 }
 
+// Re-reads the figures now: the countdowns and pace marks move at once; the
+// limits themselves change only when a response has reported new ones.
+async function refresh($: EngineInterface) {
+  await take($, snapshotOf(await $.session.usage()))
+  $.ui.toast('Usage refreshed', { timeoutMs: 1500 })
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -388,26 +433,32 @@ export const register: Register = on => {
     const list = tanksOf(cur, prev, await $.clock.now())
 
     if (e.surface === 'desktop') {
-      const { Svg } = $.ui.resolve(e)
+      const { Box, Button, Svg } = $.ui.resolve(e)
       const columns = e.props.bodyColumns || e.viewport?.columns || 100
-      const svg = pixelSvg(list, cur.usd, e.props.isWorking, columns)
+      // The image can't take a press, so the refresh control is a real Button beside it.
+      const width = Math.max(420, Math.round(columns * PX_PER_COLUMN) - REFRESH_W)
       // Drawn as an image, not an interactive frame: it stays transparent, and SMIL still plays.
       return (
-        <Svg
-          source={svg}
-          alt={list.map(t => `${t.tag} ${Math.round(t.pct)}%`).join(', ')}
-          width={Math.max(420, Math.round(columns * PX_PER_COLUMN))}
-          height={HEIGHT}
-        />
+        <Box flexDirection="row" alignItems="center" gap={1}>
+          <Svg
+            source={pixelSvg(list, cur.usd, e.props.isWorking, width)}
+            alt={list.map(t => `${t.tag} ${Math.round(t.pct)}%`).join(', ')}
+            width={width}
+            height={HEIGHT}
+          />
+          <Button key="refresh" label="↻" plain dimColor onPress={() => refresh($)} />
+        </Box>
       )
     }
 
     if (e.surface === 'terminal') {
-      const { Box, Text } = $.ui.resolve(e)
+      const { Box, Button, Text } = $.ui.resolve(e)
       const color = (pct: number) => ({ ok: 'cyan', warn: 'yellow', hot: 'red' })[tone(pct)]
+      const worst = list.reduce((a, b) => (b.pct > a.pct ? b : a))
+      const note = noteOf(worst)
       return (
         <Box flexDirection="row" gap={2}>
-          <Text color="#D97757">{FACES[moodOf(Math.max(...list.map(t => t.pct)))]}</Text>
+          <Text color="#D97757">{FACES[moodOf(worst.pct)]}</Text>
           {list.map(t => (
             <Text>
               <Text dimColor>{t.tag} </Text>
@@ -416,6 +467,8 @@ export const register: Register = on => {
             </Text>
           ))}
           {cur.usd !== undefined ? <Text dimColor>${cur.usd.toFixed(2)}</Text> : null}
+          {note ? <Text color={color(worst.pct)}>{note}</Text> : null}
+          <Button key="refresh" label="↻" plain dimColor hotkey="r" onPress={() => refresh($)} />
         </Box>
       )
     }

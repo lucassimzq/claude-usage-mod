@@ -20,6 +20,8 @@ The mood follows the highest of the three numbers.
 
 While Claude is working, Clawd's legs walk.
 
+From 50% up, a small speech bubble beside Clawd names whichever figure is highest, like "You're almost reaching your weekly limit"; once a limit is used up it says when it resets. Below 50% the bubble goes away and the bars take the room back.
+
 ## The bars
 
 - **`ctx`**: how full the context window is.
@@ -27,7 +29,7 @@ While Claude is working, Clawd's legs walk.
 - Cells are green under 50%, amber from 50% and red from 80%.
 - The session's cost sits at the right end.
 
-You also get a toast when a limit passes 50%, 80% or 95%. `/usage-hud` hides or shows the band.
+You also get a toast when a limit passes 50%, 80% or 95%. The `↻` button at the right end re-reads the figures on demand (press `r` while the band has focus in the terminal), and `/usage-hud` hides or shows the band.
 
 On the desktop Code tab it draws as pixel art; in the terminal it falls back to text bars with a face like `(°□°;)`.
 
