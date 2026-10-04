@@ -388,7 +388,7 @@ const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
 const NOTE_CHAR = 5.9 // a 9.5px monospace advance, with a little slack
 
 function noteSvg(note: string, x: number, color: string): { svg: string; width: number } {
-  const width = Math.round(note.length * NOTE_CHAR + 14)
+  const width = noteWidthOf(note)
   const esc = note.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')
   // A square speech bubble with a stepped pixel tail pointing back at Clawd.
   const svg = `<g transform="translate(${x} 0)">
@@ -399,25 +399,93 @@ function noteSvg(note: string, x: number, color: string): { svg: string; width: 
   return { svg, width }
 }
 
+// The same note in a few words, for when the full sentence doesn't fit.
+const SHORT_NAMES: Record<string, string> = {
+  'context window': 'Context',
+  'session limit': 'Session',
+  'weekly limit': 'Weekly',
+  'spend limit': 'Spend',
+}
+
+function shortNoteOf(worst: Tank): string | undefined {
+  const name = SHORT_NAMES[worst.name] ?? cap(worst.name)
+  const pct = worst.pct
+  if (pct >= 100) return worst.resetIn ? `${name} resets in ${worst.resetIn}` : `${name} used up`
+  if (pct >= 95) return `${name} nearly out`
+  if (pct >= 80) return `${name} almost full`
+  if (pct >= 50) return `${name} over half`
+  return undefined
+}
+
+const noteWidthOf = (note: string) => Math.round(note.length * NOTE_CHAR + 14)
+
+const UNIT_GAP = 10 // between one figure's percentage and the next one's tag
+const NOTE_GAP = 12
+const MIN_BAR = 6 * (CW + GAP) - GAP
+const COMFY_BAR = 12 * (CW + GAP) - GAP
+const NOTE_BAR = 8 * (CW + GAP) - GAP // a short note is worth slightly shorter bars
+const MAX_BAR = 56 * (CW + GAP) - GAP // past this, extra room goes between the figures
+
+type Plan =
+  | { mode: 'bars'; note?: string; showUsd: boolean; rw: number }
+  | { mode: 'compact' | 'tiny'; note?: undefined; showUsd: false }
+
+// The richest arrangement that fits, giving things up in order: the long note, the
+// cost, a little bar length, the short note, more bar length, then the bars
+// themselves, then all but the highest figure.
+function planOf(width: number, list: Tank[], usd: number | undefined, worst: Tank): Plan {
+  const n = list.length
+  const fits = (note: string | undefined, showUsd: boolean, minBar: number): Plan | undefined => {
+    if (showUsd && usd === undefined) return undefined
+    const room = width - SPRITE_W - (note ? noteWidthOf(note) + NOTE_GAP : 0) - (showUsd ? USD_W : 0)
+    const rw = room / n - TAG_W - PCT_W - UNIT_GAP
+    return rw >= minBar ? { mode: 'bars', note, showUsd, rw: Math.min(MAX_BAR, rw) } : undefined
+  }
+  const long = noteOf(worst)
+  const short = shortNoteOf(worst)
+  return (
+    fits(long, true, COMFY_BAR) ??
+    fits(long, false, COMFY_BAR) ??
+    fits(short, true, COMFY_BAR) ??
+    fits(short, false, COMFY_BAR) ??
+    fits(short, false, NOTE_BAR) ??
+    fits(undefined, true, COMFY_BAR) ??
+    fits(undefined, false, COMFY_BAR) ??
+    fits(undefined, false, MIN_BAR) ??
+    (width - SPRITE_W >= n * compactUnitWidth(list) ? { mode: 'compact', showUsd: false } : { mode: 'tiny', showUsd: false })
+  )
+}
+
+const compactUnitWidth = (list: Tank[]) =>
+  Math.max(...list.map(t => textWidth(t.tag) + 5 + textWidth(`${Math.round(t.pct)}%`))) + UNIT_GAP + 4
+
 function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width: number): string {
   const worst = list.reduce((a, b) => (b.pct > a.pct ? b : a))
   const mood = moodOf(worst.pct)
-  const text = noteOf(worst)
-  const note = text ? noteSvg(text, SPRITE_W, TONES[tone(worst.pct)]) : undefined
-  const left = SPRITE_W + (note ? note.width + 12 : 0)
-  const unit = (width - left - (usd === undefined ? 0 : USD_W)) / list.length
-  const rw = Math.max(40, unit - TAG_W - PCT_W - 6)
+  const plan = planOf(width, list, usd, worst)
+  const note = plan.note ? noteSvg(plan.note, SPRITE_W, TONES[tone(worst.pct)]) : undefined
+  const left = SPRITE_W + (note ? note.width + NOTE_GAP : 0)
   const ty = BY + (BH - 5 * FP) / 2
-  const units = list.map((t, i) => {
-    const bar = barSvg(t, i, rw)
-    const pct = `${Math.round(t.pct)}%`
-    return `<g transform="translate(${n2(left + i * unit)} 0)"${t.isSaved ? ' opacity="0.5"' : ''}>
-      <path d="${textPixels(t.tag, 0, ty)}" fill="${MUTED}"/>
-      <g transform="translate(${TAG_W} 0)">${bar.svg}</g>
-      <path d="${textPixels(pct, TAG_W + bar.width + 5, ty)}" fill="${TONES[tone(t.pct)]}"/>
-    </g>`
-  })
-  if (usd !== undefined) {
+  const figure = (t: Tank, x: number, body: string) =>
+    `<g transform="translate(${n2(x)} 0)"${t.isSaved ? ' opacity="0.5"' : ''}>${body}</g>`
+  const label = (t: Tank, x: number) =>
+    `<path d="${textPixels(`${Math.round(t.pct)}%`, x, ty)}" fill="${TONES[tone(t.pct)]}"/>`
+  const tag = (t: Tank) => `<path d="${textPixels(t.tag, 0, ty)}" fill="${MUTED}"/>`
+
+  let units: string[]
+  if (plan.mode === 'bars') {
+    const unit = (width - left - (plan.showUsd ? USD_W : 0)) / list.length
+    units = list.map((t, i) => {
+      const bar = barSvg(t, i, plan.rw)
+      return figure(t, left + i * unit, `${tag(t)}<g transform="translate(${TAG_W} 0)">${bar.svg}</g>${label(t, TAG_W + bar.width + 5)}`)
+    })
+  } else {
+    // No room for bars: the figures alone, or just the highest one.
+    const shown = plan.mode === 'compact' ? list : [worst]
+    const unit = compactUnitWidth(list)
+    units = shown.map((t, i) => figure(t, left + i * unit, tag(t) + label(t, textWidth(t.tag) + 5)))
+  }
+  if (plan.showUsd && usd !== undefined) {
     const s = `$${usd.toFixed(2)}`
     units.push(`<path d="${textPixels(s, width - textWidth(s) - 2, ty)}" fill="${MUTED}"/>`)
   }
@@ -558,7 +626,7 @@ export const register: Register = on => {
       const { Box, Button, Svg } = $.ui.resolve(e)
       const columns = e.props.bodyColumns || e.viewport?.columns || 100
       // The image can't take a press, so the refresh control is a real Button beside it.
-      const width = Math.max(420, Math.round(columns * PX_PER_COLUMN) - REFRESH_W)
+      const width = Math.max(160, Math.round(columns * PX_PER_COLUMN) - REFRESH_W)
       // Drawn as an image, not an interactive frame: it stays transparent, and SMIL still plays.
       return (
         <Box flexDirection="row" alignItems="center" gap={1}>
@@ -577,18 +645,34 @@ export const register: Register = on => {
       const { Box, Button, Text } = $.ui.resolve(e)
       const color = (pct: number) => ({ ok: 'cyan', warn: 'yellow', hot: 'red' })[tone(pct)]
       const worst = list.reduce((a, b) => (b.pct > a.pct ? b : a))
-      const note = noteOf(worst)
+      const face = FACES[moodOf(worst.pct)]
+      const usd = cur.usd === undefined ? '' : `$${cur.usd.toFixed(2)}`
+      // Fit the row to the terminal: give up the long note, the cost, the short note, then the bars.
+      const cols = e.props.bodyColumns || e.viewport?.columns || 80
+      const figures = (bars: boolean) => list.reduce((w, t) => w + t.tag.length + (bars ? 6 : 0) + 5 + 2, 0)
+      const widthOf = (bars: boolean, note?: string, cost?: string) =>
+        face.length + 2 + figures(bars) + (cost ? cost.length + 2 : 0) + (note ? note.length + 2 : 0) + 3
+      const options: [boolean, string | undefined, string | undefined][] = [
+        [true, noteOf(worst), usd],
+        [true, noteOf(worst), undefined],
+        [true, shortNoteOf(worst), usd],
+        [true, shortNoteOf(worst), undefined],
+        [true, undefined, usd],
+        [true, undefined, undefined],
+        [false, undefined, undefined],
+      ]
+      const [bars, note, cost] = options.find(([b, n, c]) => widthOf(b, n, c) <= cols) ?? options[options.length - 1]
       return (
         <Box flexDirection="row" gap={2}>
-          <Text color="#D97757">{FACES[moodOf(worst.pct)]}</Text>
+          <Text color="#D97757">{face}</Text>
           {list.map(t => (
             <Text>
               <Text dimColor>{t.tag} </Text>
-              <Text color={color(t.pct)}>{bar(t.pct)}</Text>
-              <Text bold dimColor={t.isSaved}> {Math.round(t.pct)}</Text>
+              {bars ? <Text color={color(t.pct)}>{bar(t.pct)} </Text> : null}
+              <Text bold color={bars ? undefined : color(t.pct)} dimColor={t.isSaved}>{Math.round(t.pct)}%</Text>
             </Text>
           ))}
-          {cur.usd !== undefined ? <Text dimColor>${cur.usd.toFixed(2)}</Text> : null}
+          {cost ? <Text dimColor>{cost}</Text> : null}
           {note ? <Text color={color(worst.pct)}>{note}</Text> : null}
           <Button key="refresh" label="↻" plain dimColor hotkey="r" onPress={() => refresh($)} />
         </Box>

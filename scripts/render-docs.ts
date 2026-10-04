@@ -23,7 +23,7 @@ const { clawdSvg, pixelSvg, tanksOf } = await import(tmp)
 rmSync(tmp)
 
 const NOW = Date.parse('2026-10-04T12:00:00Z')
-const BAND_W = 660
+const BAND_W = 820
 
 function snapshot(ctx: number, session: number, weekly: number) {
   return {
