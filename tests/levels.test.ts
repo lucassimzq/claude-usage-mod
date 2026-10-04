@@ -30,7 +30,7 @@ test('turns earn XP, a daily bonus and First Steps', async ($, on) => {
   // 25 daily + 2 × 10 per turn + 50 for First Steps
   expect(await stats($)).toMatch(/level 1, Hatchling · 95 XP/)
   expect(await stats($)).toMatch(/Streak: 1 day/)
-  expect(await stats($)).toMatch(/Badges 1\/12: First Steps/)
+  expect(await stats($)).toMatch(/Badges 1\/13: First Steps/)
   expect(await stats($)).toMatch(/Turns: 2 · tokens: 12k in, 400 out/)
 })
 
@@ -107,4 +107,20 @@ test('the band shows the level on every surface, and gives it up when narrow', a
   const image = await desktop.find({ type: 'Svg' })
   expect(image).toBeDefined()
   await desktop.unmount()
+})
+
+test('reaching 100% pays out at once, only once per window', async ($, on) => {
+  mock.store(on)
+  mock.clock(on, { now: NOON })
+  on('session.measure', () => ({ changed: [] }))
+  on('command.run', () => ({ text: '' }))
+
+  const reset = NOON + 2 * DAY
+  await measure($, 98, reset)
+  await measure($, 100, reset)
+  // 2 weekly points × 5 + 150 for maxing the week + 50 for the badge
+  expect(await stats($)).toMatch(/· 210 XP/)
+  expect(await stats($)).toMatch(/Maxed Out/)
+  await measure($, 100, reset)
+  expect(await stats($)).toMatch(/· 210 XP/)
 })

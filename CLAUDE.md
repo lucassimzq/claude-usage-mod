@@ -38,6 +38,7 @@ A Claude Code mod (a plugin of function hooks, plugin name `usage-hud`) that dra
 - The rules are pure functions in `#region game` (`afterTurn`, `afterMeasure`, `scoreWindow`); the level math, unlocks and the cluster's drawing are in `#region drawing` so the README images can use them.
 - `turn.complete` (main conversation only) earns turn XP, the daily bonus, streaks and time badges. `take()` passes each reading to `afterMeasure`: weekly-point XP, window peaks, and pacing scores when a window's reset time has passed. A reading whose own reset time has passed is stale and skipped, so a window is never scored twice.
 - Nothing is earned for usage from before the game first saw a window.
+- Reaching 100% pays out at once (`maxedOut()`), once per window: Lucas wanted hitting the limit to feel like a win, not a penalty.
 - In `planOf()` the level cluster is the first thing to give way: the streak, then the rest of it.
 
 ## Mood thresholds

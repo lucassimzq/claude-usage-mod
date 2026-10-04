@@ -673,6 +673,8 @@ const XP = {
   weeklyPoint: 5,
   paced: 100, // a 5-hour window that peaked at 60–99%
   light: 40, // one that peaked at 30–59%
+  maxedSession: 60, // the moment a 5-hour window reaches 100%
+  maxedWeek: 150, // the moment a weekly window does
   badge: 50,
 }
 
@@ -683,6 +685,7 @@ const BADGES: Record<string, { name: string; how: string }> = {
   'close-call': { name: 'Close Call', how: 'a week that peaked at 95–99%' },
   zen: { name: 'Zen', how: 'a week that stayed under 50%' },
   'perfect-pace': { name: 'Perfect Pace', how: 'three well-paced 5-hour windows in a row' },
+  'maxed-out': { name: 'Maxed Out', how: 'a limit taken all the way to 100%' },
   phoenix: { name: 'Phoenix', how: 'back at it after a limit you hit reset' },
   marathon: { name: 'Marathon', how: '100 tool calls in one session' },
   'deep-thinker': { name: 'Deep Thinker', how: 'context past 80%' },
@@ -778,6 +781,14 @@ function afterTurn(prev: Progress, t: TurnFacts): Step {
   return step
 }
 
+function maxedOut(step: Step, kind: string, day: string) {
+  const gain = kind === 'seven_day' ? XP.maxedWeek : kind === 'five_hour' ? XP.maxedSession : 0
+  if (gain === 0) return
+  step.p.xp += gain
+  step.news.push(`Maxed out the ${kind === 'seven_day' ? 'weekly' : 'session'} limit! (+${gain} XP)`)
+  earn(step, 'maxed-out', day)
+}
+
 // A window has ended: score how it went.
 function scoreWindow(step: Step, kind: string, peak: number, day: string) {
   const p = step.p
@@ -818,6 +829,8 @@ function afterMeasure(prev: Progress, snap: Snapshot, now: number, prevCtx?: num
     if (ended) scoreWindow(step, l.kind, w.peak, day)
     const from = ended ? 0 : w.peak
     if (l.kind === 'seven_day' && l.pct > from) p.xp += XP.weeklyPoint * (l.pct - from)
+    // Reaching 100% pays out at once, once per window.
+    if (l.pct >= 100 && from < 100) maxedOut(step, l.kind, day)
     p.windows[l.kind] = { resetsAt: l.resetsAt ?? w.resetsAt, peak: Math.max(from, l.pct) }
   }
   if (snap.ctxPct >= 80) earn(step, 'deep-thinker', day)

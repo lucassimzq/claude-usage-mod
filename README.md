@@ -55,9 +55,10 @@ Clawd earns XP as you work and levels up. The level, a thin bar toward the next 
 <img src="docs/levels/level-15.svg" alt="Clawd in a hard hat beside Lv15, a 21-day streak flame and the usage bars" width="100%">
 
 - **XP:** 10 per turn (2 after your first 60 of the day), 25 for the first turn of each day, and 5 per point your weekly limit rises.
-- **Pacing pays:** a 5-hour window that peaks at 60–99% earns 100 XP, one at 30–59% earns 40. Running into 100% earns nothing extra.
+- **Pacing pays:** a 5-hour window that peaks at 60–99% earns 100 XP, one at 30–59% earns 40.
+- **Maxing out pays too:** the moment a limit reaches 100% you get 60 XP for the 5-hour window or 150 for the weekly one, once per window.
 - **Streaks:** each day with a turn adds one. Every 7 days earns a rest day (you can hold 2), which covers a day off.
-- **Badges:** twelve to find, like Close Call (a week that peaked at 95–99%), Zen (a week under 50%) and Night Owl. Each is worth 50 XP.
+- **Badges:** thirteen to find, like Close Call (a week that peaked at 95–99%), Maxed Out, Zen (a week under 50%) and Night Owl. Each is worth 50 XP.
 - **Unlocks:** a scarf at level 3, then a beanie (5), sunglasses (10), a hard hat (15), a cape (20), a wizard hat (30) and a golden shell (50). Clawd wears the newest one.
 
 Level `L` needs `50 × L × (L − 1)` XP in all, so daily use reaches level 10 in about a week and level 50 in about seven months. Progress counts from when you install the mod and is shared by all your sessions.
