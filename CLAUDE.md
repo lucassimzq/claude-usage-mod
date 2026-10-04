@@ -7,7 +7,8 @@ A Claude Code mod (a plugin of function hooks, plugin name `usage-hud`) that dra
 - `.claude-plugin/plugin.json`: the manifest; `types` points at the state contract.
 - `hooks/hooks.json`: lists the one hooks module.
 - `hooks/register.tsx`: the whole mod.
-- `types/index.d.ts`: the contract for the values the mod keeps in `$.state` (`gauges`, `isHidden`).
+- `types/index.d.ts`: the contract for the values the mod keeps in `$.state` (`gauges`, `isHidden`, `activity`, `game`) and the saved `Progress`.
+- `tests/levels.test.ts`: `claude plugin test .` runs it.
 - `scripts/render-docs.ts`: renders `docs/banner.svg` and `docs/states/*.svg` for the README.
 - `.claude-plugin/types/`: type files the engine writes for editors; ignored by its own `.gitignore`.
 
@@ -30,6 +31,14 @@ A Claude Code mod (a plugin of function hooks, plugin name `usage-hud`) that dra
 - **Helpers that take `$` must be top-level function declarations.** `claude plugin validate` follows `$` only into those (`take`, `withSaved`, `refresh`, `setActivity`).
 - **Clawd's scenes:** each mood is a small scene with one slow-moving prop (headphones and notes, coffee and steam, a ticking clock, flames, Z's), and props on his right give way to the thought bubble while Claude thinks. Positions animated with `animateTransform` also get a matching `transform` attribute, so a still frame puts them in the right place.
 - **Calm by design:** the user asked for flat 2D cells, muted colors (`TONES`) and very little motion. Clawd mostly holds still, with one short beat every few seconds; keep new animation in that spirit.
+
+## Levels
+
+- Progress lives in `$.store` under `progress`, which is one file under the user's Claude Code config, so every session and project shares one Clawd. `play()` reads it fresh, applies one change, saves it and mirrors it into the `game` atom, one change at a time.
+- The rules are pure functions in `#region game` (`afterTurn`, `afterMeasure`, `scoreWindow`); the level math, unlocks and the cluster's drawing are in `#region drawing` so the README images can use them.
+- `turn.complete` (main conversation only) earns turn XP, the daily bonus, streaks and time badges. `take()` passes each reading to `afterMeasure`: weekly-point XP, window peaks, and pacing scores when a window's reset time has passed. A reading whose own reset time has passed is stale and skipped, so a window is never scored twice.
+- Nothing is earned for usage from before the game first saw a window.
+- In `planOf()` the level cluster is the first thing to give way: the streak, then the rest of it.
 
 ## Mood thresholds
 

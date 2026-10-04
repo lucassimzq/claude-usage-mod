@@ -48,6 +48,22 @@ While Claude works, Clawd joins in: a thought bubble while Claude thinks, and a 
 
 You also get a short pop-up when a limit passes 50%, 80% or 95%.
 
+## Levels
+
+Clawd earns XP as you work and levels up. The level, a thin bar toward the next one, and your daily streak sit beside him.
+
+<img src="docs/levels/level-15.svg" alt="Clawd in a hard hat beside Lv15, a 21-day streak flame and the usage bars" width="100%">
+
+- **XP:** 10 per turn (2 after your first 60 of the day), 25 for the first turn of each day, and 5 per point your weekly limit rises.
+- **Pacing pays:** a 5-hour window that peaks at 60–99% earns 100 XP, one at 30–59% earns 40. Running into 100% earns nothing extra.
+- **Streaks:** each day with a turn adds one. Every 7 days earns a rest day (you can hold 2), which covers a day off.
+- **Badges:** twelve to find, like Close Call (a week that peaked at 95–99%), Zen (a week under 50%) and Night Owl. Each is worth 50 XP.
+- **Unlocks:** a scarf at level 3, then a beanie (5), sunglasses (10), a hard hat (15), a cape (20), a wizard hat (30) and a golden shell (50). Clawd wears the newest one.
+
+Level `L` needs `50 × L × (L − 1)` XP in all, so daily use reaches level 10 in about a week and level 50 in about seven months. Progress counts from when you install the mod and is shared by all your sessions.
+
+<img src="docs/levels/level-30.svg" alt="Clawd in a wizard hat beside Lv30 and a 60-day streak" width="100%">
+
 ## Install
 
 Clone the repo:
@@ -77,6 +93,8 @@ You need Claude Code 2.1.286 or later. The `5h` and `7d` bars need a Claude subs
 ## Use
 
 - **`/usage-hud`** hides or shows the band.
+- **`/usage-hud stats`** shows Clawd's level, XP, streak, tokens counted and badges.
+- **`/usage-hud wear <item>`** picks what Clawd wears from what you've unlocked (`wear none` for nothing).
 - **`↻`** refreshes the figures (`r` in the terminal while the band has focus).
 
 The desktop Code tab draws the pixel version. The terminal shows text bars with a face like `(°□°;)`.
