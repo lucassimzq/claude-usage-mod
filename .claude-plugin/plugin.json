@@ -1,0 +1,10 @@
+{
+  "name": "usage-hud",
+  "version": "0.1.0",
+  "description": "A pixel Clawd above your prompt whose mood follows your context, session and weekly usage",
+  "author": {
+    "name": "lucassimzq"
+  },
+  "repository": "https://github.com/lucassimzq/claude-usage-mod",
+  "types": "./types/index.d.ts"
+}
