@@ -89,7 +89,7 @@ function banner(): string {
   <g shape-rendering="crispEdges">${dots}</g>
   <g transform="translate(${W / 2 - 75} 18) scale(5)" shape-rendering="crispEdges">${clawdSvg('happy', 'idle')}</g>
   <text x="${W / 2}" y="198" text-anchor="middle" fill="#fff" style="font: 700 68px ${sans}; letter-spacing: -1.5px">claude-usage-mod</text>
-  <text x="${W / 2}" y="246" text-anchor="middle" fill="#bdbdbd" style="font: 400 24px ${sans}">Your Claude Code limits above the prompt, watched over by Clawd</text>
+  <text x="${W / 2}" y="246" text-anchor="middle" fill="#bdbdbd" style="font: 400 24px ${sans}">Your Claude Code limits above the prompt, watched over by a pixel crab</text>
 </svg>
 `
 }

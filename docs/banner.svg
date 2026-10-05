@@ -11,5 +11,5 @@
       <animate attributeName="opacity" values="1;1;1;0" keyTimes="0;0.25;0.5;0.75" calcMode="discrete" dur="3.2s" begin="-1.6s" repeatCount="indefinite"/></g>
   </g></g>
   <text x="640" y="198" text-anchor="middle" fill="#fff" style="font: 700 68px -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; letter-spacing: -1.5px">claude-usage-mod</text>
-  <text x="640" y="246" text-anchor="middle" fill="#bdbdbd" style="font: 400 24px -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">Your Claude Code limits above the prompt, watched over by Clawd</text>
+  <text x="640" y="246" text-anchor="middle" fill="#bdbdbd" style="font: 400 24px -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">Your Claude Code limits above the prompt, watched over by a pixel crab</text>
 </svg>
