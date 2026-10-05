@@ -125,10 +125,12 @@ test('the band shows the level on every surface, and gives it up when narrow', a
   expect(await narrow.find({ type: 'Text', text: /Lv10/ })).toBeUndefined()
   await narrow.unmount()
 
-  const desktop = await $.ui.mount({ plugin: 'usage-hud', surface: 'desktop', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
-  const image = await desktop.find({ type: 'Svg' })
-  expect(image).toBeDefined()
-  await desktop.unmount()
+  for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
+    const band = await $.ui.mount({ plugin: 'usage-hud', surface, component: 'AbovePrompt', props: { bodyColumns: surface === 'mobile' ? 44 : 120 } as never })
+    expect(await band.find({ type: 'Svg' })).toBeDefined()
+    expect(await band.find({ type: 'Button', key: 'refresh' })).toBeDefined()
+    await band.unmount()
+  }
 })
 
 test('reaching 100% pays out at once, only once per window', async ($, on) => {

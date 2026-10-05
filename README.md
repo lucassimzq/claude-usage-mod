@@ -102,6 +102,8 @@ Or try it for a single terminal session:
 claude --plugin-dir ~/claude-usage-mod
 ```
 
+The band shows in the terminal, the desktop app's Code tab, Claude Code for VS Code and the Claude mobile app. It doesn't show on claude.ai (cloud sessions on the web, or threads in a Project): mods load from your own machine's Claude Code, and those pages have no place for one to draw.
+
 You need Claude Code 2.1.286 or later. The `5h` and `7d` bars need a Claude subscription; right after installing they appear with Claude's first reply, and from then on every restart shows the last figures straight away.
 
 ## Use
