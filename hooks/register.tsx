@@ -1386,7 +1386,8 @@ export const register: Register = on => {
     const level = levelOf(p.xp)
     const worn = outfitOf(p, level)
     const shelf = shelfOf(p)
-    const first = shelf.find(s => s.state === 'wearing' || s.state === 'owned')?.id
+    // The focus starts on the first thing Clawd has, reading the slots top to bottom.
+    const first = SLOTS.flatMap(slot => shelf.filter(s => s.slot === slot)).find(s => s.state === 'wearing' || s.state === 'owned')?.id
     const coins = `${p.coins.toLocaleString('en-US')} coins`
     const wearing = SLOTS.flatMap(slot => (worn[slot] ? [nameOf(worn[slot])] : []))
 
