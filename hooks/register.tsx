@@ -1309,6 +1309,7 @@ async function installUpdate($: EngineInterface): Promise<string> {
 let doing: Activity = 'idle'
 
 const SHOP = 'shop'
+const SHOP_WIDE = 420 // px: below this the shop's header stacks under Clawd
 const SLOT_NAMES: Record<Slot, string> = { head: 'Head', face: 'Face', neck: 'Neck', back: 'Back', shell: 'Shell', buddy: 'Buddy' }
 
 // Opens the shop pane where the person asked for it; the text list stands in where it can't be drawn.
@@ -1477,7 +1478,7 @@ export const register: Register = on => {
               </Box>
             </Box>
           ))}
-          <Box flexDirection="row" gap={2}>
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
             <Button key="none" label="take all off" plain dimColor onPress={() => shopPress($, dressed, 'none')} />
             <Text dimColor>Tab or arrows move · Enter wears, buys or takes off · Esc closes</Text>
           </Box>
@@ -1486,16 +1487,20 @@ export const register: Register = on => {
     }
 
     const { Box, Button, Svg, Text } = $.ui.resolve(e)
+    // A narrow sidebar stacks the header under Clawd, so the text keeps its width and the button stays in view.
+    const wide = (e.props.bodyColumns || 100) * PX_PER_COLUMN >= SHOP_WIDE
     return (
       <Box flexDirection="column" gap={1} padding={1}>
-        <Box flexDirection="row" alignItems="center" gap={2}>
+        <Box flexDirection={wide ? 'row' : 'column'} alignItems={wide ? 'center' : 'flex-start'} gap={wide ? 2 : 1}>
           <Svg source={wardrobeSvg(worn, 3)} alt={`Clawd wearing ${wearing.join(', ') || 'nothing'}`} width={132} height={84} />
-          <Box flexDirection="column" flexGrow={1}>
-            <Text bold>{`Level ${level} · ${titleOf(level)}`}</Text>
-            <Text color={COLORS.golden}>{coins}</Text>
-            <Text dimColor>{`1 coin per ${COINS.perTokens.toLocaleString('en-US')} tokens Claude writes, ${COINS.level} per level, ${COINS.badge} per badge`}</Text>
+          <Box flexDirection="column" alignItems="flex-start" flexGrow={1} flexShrink={1} gap={1}>
+            <Box flexDirection="column">
+              <Text bold>{`Level ${level} · ${titleOf(level)}`}</Text>
+              <Text color={COLORS.golden}>{coins}</Text>
+              <Text dimColor>{`1 coin per ${COINS.perTokens.toLocaleString('en-US')} tokens Claude writes, ${COINS.level} per level, ${COINS.badge} per badge`}</Text>
+            </Box>
+            <Button key="none" label="Take everything off" onPress={() => shopPress($, dressed, 'none')} />
           </Box>
-          <Button key="none" label="Take everything off" onPress={() => shopPress($, dressed, 'none')} />
         </Box>
         {SLOTS.map(slot => (
           <Box key={slot} flexDirection="column" gap={1}>
