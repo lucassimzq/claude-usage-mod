@@ -57,7 +57,7 @@ test('a newer release tag puts an update button on the band', async ($, on) => {
   await start($)
   await measure($)
 
-  for (const surface of ['terminal', 'desktop'] as const) {
+  for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const band = await $.ui.mount({ plugin: 'usage-hud', surface, component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
     expect(await band.find({ type: 'Button', key: 'update' })).toBeDefined()
     await band.unmount()

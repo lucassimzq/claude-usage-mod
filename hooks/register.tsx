@@ -1504,7 +1504,8 @@ export const register: Register = on => {
     const updateLabel = !latest ? undefined : phase === 'installing' ? 'updating…' : phase === 'restart' ? `restart for ${latest}` : undefined
     const onUpdate = async () => $.ui.toast(await installUpdate($))
 
-    if (e.surface === 'desktop') {
+    // Every surface but the terminal (desktop, VS Code, the Claude mobile app) draws Svg.
+    if (e.surface !== 'terminal') {
       const { Box, Button, Svg, Text } = $.ui.resolve(e)
       const columns = e.props.bodyColumns || e.viewport?.columns || 100
       // The image can't take a press, so the refresh control is a real Button beside it.
