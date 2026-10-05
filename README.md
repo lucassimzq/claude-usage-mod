@@ -108,8 +108,8 @@ You need Claude Code 2.1.286 or later. The `5h` and `7d` bars need a Claude subs
 
 - **`/usage-hud`** hides or shows the band.
 - **`/usage-hud stats`** shows Clawd's level, XP, streak, coins, tokens counted and badges.
-- **`/usage-hud shop`** lists everything with prices and your coins; **`/usage-hud buy <item>`** buys it and puts it on.
-- **`/usage-hud wear <item>`** and **`/usage-hud remove <item>`** change the outfit (`wear none` takes it all off).
+- **`/usage-hud shop`** opens the shop as a panel: every item in its slot, with Clawd trying it on. Press one to buy it, put it on or take it off. In the terminal, Tab or the arrows move between items, Enter presses, Esc closes. `/usage-hud wear`, `buy` or `remove` with no item open it too.
+- **`/usage-hud buy <item>`**, **`wear <item>`** and **`remove <item>`** still work as typed commands (`wear none` takes it all off), and **`/usage-hud shop list`** prints the shop as text.
 - **`/usage-hud update`** checks for a new version now and installs it.
 - **`↻`** refreshes the figures (`r` in the terminal while the band has focus).
 
