@@ -482,7 +482,7 @@ function noteOf(worst: Tank): string | undefined {
   return undefined
 }
 
-const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 const NOTE_CHAR = 5.9 // a 9.5px monospace advance, with a little slack
 
@@ -1165,6 +1165,7 @@ async function withSaved($: EngineInterface, snap: Snapshot): Promise<Snapshot> 
 }
 
 const PROGRESS = 'progress'
+const HIDDEN = 'hidden' // true while the person has hidden the band, across sessions
 let playing: Promise<unknown> = Promise.resolve()
 let sparkle: { cancel: () => void } | undefined
 
@@ -1193,8 +1194,11 @@ async function play($: EngineInterface, change: (p: Progress, now: number) => St
     for (const line of news) $.ui.toast(line)
     return reply
   })
-  // A failed change is dropped; the game never gets in the way of the band.
-  const settled = run.catch(() => undefined)
+  // A failed change is dropped so the game never gets in the way of the band; the debug log says so.
+  const settled = run.catch((err: unknown) => {
+    $.ui.log(`a progress change was dropped: ${err instanceof Error ? err.message : String(err)}`, { to: 'debug' })
+    return undefined
+  })
   playing = settled
   return settled
 }
@@ -1252,8 +1256,9 @@ async function checkForUpdate($: EngineInterface, isForced = false): Promise<str
       if (res.ok) {
         const list = JSON.parse(res.text) as { name: string }[]
         tag = highestTag(list.map(t => t.name))
-        await $.store.set(LATEST, { tag, checkedAt: now })
       }
+      // Any answer counts as a check (a 403 from the rate limit too), so GitHub isn't asked again for hours.
+      await $.store.set(LATEST, { tag, checkedAt: now })
     } catch {
       // Offline or refused: keep what we knew and try again on the next check.
     }
@@ -1271,13 +1276,16 @@ async function installUpdate($: EngineInterface): Promise<string> {
   if (!latest) return `usage-hud is up to date (v${running}).`
   if (phase !== 'idle') return `usage-hud ${latest} is already ${phase === 'installing' ? 'being installed' : 'installed; restart Claude Code to load it'}.`
   const root = $.plugin.root
-  const git = (...args: string[]) => $.process.run(['git', '-C', root, ...args], { timeoutMs: 60_000 })
+  // No prompt for credentials: a remote that asks for them fails at once instead of hanging until the timeout.
+  const git = (...args: string[]) =>
+    $.process.run(['git', '-C', root, ...args], { timeoutMs: 60_000, env: { GIT_TERMINAL_PROMPT: '0' } })
   const manual = `Run \`git -C ${root} pull\` to update by hand.`
   try {
     const clone = await git('rev-parse', '--is-inside-work-tree')
     if (clone.exitCode !== 0) return `usage-hud ${latest} is out, but this copy isn't a git clone. Update it the way you installed it.`
     await update($, updates, (u: Update): Update => ({ ...u, phase: 'installing' }))
-    const fetched = await git('fetch', '--tags', '--quiet', 'origin')
+    // Just the one tag: nothing else the remote holds is fetched, and a stray tag elsewhere can't fail the update.
+    const fetched = await git('fetch', '--quiet', '--no-tags', 'origin', 'tag', latest)
     const result = fetched.exitCode === 0 ? await git('merge', '--ff-only', '--quiet', `refs/tags/${latest}`) : fetched
     if (result.exitCode !== 0) {
       await update($, updates, (u: Update): Update => ({ ...u, phase: 'idle' }))
@@ -1348,6 +1356,8 @@ export const register: Register = on => {
     })
     const saved = progressOf(await $.store.get(PROGRESS))
     await update($, game, () => ({ progress: saved, burst: false }))
+    const hidden = (await $.store.get(HIDDEN)) === true
+    await update($, isHidden, () => hidden)
     await take($, snapshotOf(await $.session.usage()))
     // Redraw each minute so the pace marks and reset times stay current.
     $.clock.every(60_000, () => {
@@ -1376,9 +1386,12 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // A subagent's turn ending must not put Clawd down while the main turn still runs; a turn
+  // that made no request (interrupted before the first response, or dead on an API error) is no turn.
   on('turn.complete', async ($, e, next) => {
+    if (e.agentId) return next(e)
     await setActivity($, 'idle')
-    if (!e.agentId) await play($, (p, now) => afterTurn(p, { now, usage: e.usage, tools: toolCalls }))
+    if (e.usage) await play($, (p, now) => afterTurn(p, { now, usage: e.usage, tools: toolCalls }))
     return next(e)
   })
 
@@ -1411,7 +1424,8 @@ export const register: Register = on => {
     }
     let hidden = false
     await update($, isHidden, h => (hidden = !h))
-    return { text: hidden ? 'Usage roads hidden.' : 'Usage roads shown.' }
+    await $.store.set(HIDDEN, hidden)
+    return { text: hidden ? 'Usage band hidden. /usage-hud brings it back.' : 'Usage band shown.' }
   })
 
   // The shop: every item in its slot, pressed to wear, buy or take off.

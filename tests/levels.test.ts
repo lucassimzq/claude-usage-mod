@@ -9,7 +9,11 @@ const USAGE = { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens:
 const turn = ($: Engine, agentId?: string) =>
   $.turn.complete({ answer: 'ok', durationMs: 1000, isAborted: false, turnId: 't', reason: 'answer', usage: { ...USAGE, model: 'm' }, agentId })
 
-const stats = async ($: Engine) => (await $.command.run({ command: 'usage-hud', args: 'stats' })).text
+// Interrupted before any response: nothing counted, so no usage.
+const abortedTurn = ($: Engine) => $.turn.complete({ answer: '', durationMs: 100, isAborted: true, turnId: 't', reason: 'aborted' })
+
+const run = async ($: Engine, args: string) => (await $.command.run({ command: 'usage-hud', args } as never)).text
+const stats = ($: Engine) => run($, 'stats')
 
 const measure = ($: Engine, weekly: number, resetsAt: number) =>
   $.session.measure({
@@ -27,6 +31,7 @@ test('turns earn XP, a daily bonus and First Steps', async ($, on) => {
   await turn($)
   await turn($)
   await turn($, 'sub') // a subagent's turn earns nothing
+  await abortedTurn($) // nor does a turn that never got a response
   // 25 daily + 2 × 10 per turn + 50 for First Steps
   expect(await stats($)).toMatch(/level 1, Hatchling · 95 XP/)
   expect(await stats($)).toMatch(/Streak: 1 day/)
@@ -82,13 +87,13 @@ test('wear picks only what is owned', async ($, on) => {
   mock.clock(on, { now: NOON })
   on('command.run', () => ({ text: '' }))
 
-  const wear = async (item: string) => (await $.command.run({ command: 'usage-hud', args: `wear ${item}` })).text
+  const wear = (item: string) => run($, `wear ${item}`)
   expect(await wear('cape')).toBe('The cape unlocks at level 20.')
   expect(await wear('crown')).toMatch(/doesn't have the crown yet: it's 2,000 coins/)
   // Level 5 unlocks the scarf and the beanie, and both are worn at once
   expect(await stats($)).toMatch(/wearing: beanie, scarf/)
-  expect(await $.command.run({ command: 'usage-hud', args: 'remove hat' }).then(r => r.text)).toMatch(/isn't wearing that/)
-  expect(await $.command.run({ command: 'usage-hud', args: 'remove head' }).then(r => r.text)).toBe('Took off the beanie.')
+  expect(await run($, 'remove hat')).toMatch(/isn't wearing that/)
+  expect(await run($, 'remove head')).toBe('Took off the beanie.')
   expect(await stats($)).toMatch(/wearing: scarf/)
 })
 
@@ -97,16 +102,15 @@ test('the shop sells for coins, and coins come from written tokens, levels and b
   mock.clock(on, { now: NOON })
   on('turn.complete', () => ({ text: '' }))
   on('command.run', () => ({ text: '' }))
-  const run = async (args: string) => (await $.command.run({ command: 'usage-hud', args })).text
 
   // 900 + 200 written tokens make one coin; First Steps adds 25
   await turn($)
   expect(await stats($)).toMatch(/Coins: 226/)
-  expect(await run('shop list')).toMatch(/Head: beanie free at level 5 \(wearing\) · .* · flower 80 · cap 100 · party hat 150 · halo 1,200 \(needs level 15\)/)
-  expect(await run('buy crown')).toBe('The crown needs level 20, and Clawd is level 5.')
-  expect(await run('buy the party hat')).toBe("Bought the party hat for 150 coins, and Clawd's wearing it. 76 coins left.")
-  expect(await run('buy party')).toMatch(/already have the party hat/)
-  expect(await run('buy monocle')).toBe('The monocle costs 300 coins and you have 76.')
+  expect(await run($, 'shop list')).toMatch(/Head: beanie free at level 5 \(wearing\) · .* · flower 80 · cap 100 · party hat 150 · halo 1,200 \(needs level 15\)/)
+  expect(await run($, 'buy crown')).toBe('The crown needs level 20, and Clawd is level 5.')
+  expect(await run($, 'buy the party hat')).toBe("Bought the party hat for 150 coins, and Clawd's wearing it. 76 coins left.")
+  expect(await run($, 'buy party')).toMatch(/already have the party hat/)
+  expect(await run($, 'buy monocle')).toBe('The monocle costs 300 coins and you have 76.')
   expect(await stats($)).toMatch(/wearing: party hat, scarf/)
 })
 
