@@ -55,3 +55,15 @@ test('the desktop shop shows Clawd trying each item on', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: 'Level 20' })).toBeDefined()
   await ui.unmount()
 })
+
+for (const [columns, direction] of [[38, 'column'], [100, 'row']] as const) {
+  test(`a ${columns}-column desktop shop lays its header out as a ${direction}`, async ($, on) => {
+    mock.store(on, { progress: { xp: 1000, coins: 200 } })
+    mock.clock(on, { now: NOON })
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop', props: { bodyColumns: columns } as never })
+    const header = ((await ui.drawn()) as unknown as { children: { props: Record<string, unknown> }[] }).children[0]
+    expect(header.props.flexDirection).toBe(direction)
+    expect(await ui.find({ key: 'none', type: 'Button' })).toBeDefined()
+    await ui.unmount()
+  })
+}
