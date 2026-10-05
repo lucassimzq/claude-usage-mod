@@ -56,8 +56,15 @@ export type Progress = {
 /** `burst` is true for a moment after a level-up, while the sparkle plays. */
 export type Game = { progress: Progress | null; burst: boolean }
 
+/**
+ * The mod's own version against the newest release tag on GitHub. `latest` is set only
+ * when it is newer than `current`; `phase` is `installing` while git fetches it and
+ * `restart` once it is on disk but this session couldn't load it by itself.
+ */
+export type Update = { current: string; latest?: string; phase: 'idle' | 'installing' | 'restart' }
+
 declare module 'claude-code' {
   interface PluginState {
-    'usage-hud': { gauges: Gauges; isHidden: boolean; activity: Activity; game: Game }
+    'usage-hud': { gauges: Gauges; isHidden: boolean; activity: Activity; game: Game; update: Update }
   }
 }

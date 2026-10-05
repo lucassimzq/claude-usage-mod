@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Claude%20Code-mod-D97757?style=for-the-badge" alt="Claude Code mod">
-  <img src="https://img.shields.io/badge/version-0.1.0-6b9e7a?style=for-the-badge" alt="Version 0.1.0">
+  <img src="https://img.shields.io/badge/version-0.0.1-6b9e7a?style=for-the-badge" alt="Version 0.0.1">
   <img src="https://img.shields.io/badge/requires-2.1.286%2B-444?style=for-the-badge" alt="Requires Claude Code 2.1.286 or later">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c4a05a?style=for-the-badge" alt="MIT license"></a>
   <a href="https://github.com/lucassimzq"><img src="https://img.shields.io/badge/made%20by-lucassimzq-111?style=for-the-badge" alt="Made by lucassimzq"></a>
@@ -86,10 +86,13 @@ To load it in every session, including the desktop app, add it to the `env` bloc
 ```json
 {
   "env": {
-    "CLAUDE_CODE_PLUGIN_DIRS": "~/claude-usage-mod"
+    "CLAUDE_CODE_PLUGIN_DIRS": "~/claude-usage-mod",
+    "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1"
   }
 }
 ```
+
+`CLAUDE_CODE_PLUGIN_DIR_WATCH` lets the desktop app pick up an update without a restart; the terminal does that on its own.
 
 Or try it for a single terminal session:
 
@@ -105,8 +108,15 @@ You need Claude Code 2.1.286 or later. The `5h` and `7d` bars need a Claude subs
 - **`/usage-hud stats`** shows Clawd's level, XP, streak, coins, tokens counted and badges.
 - **`/usage-hud shop`** lists everything with prices and your coins; **`/usage-hud buy <item>`** buys it and puts it on.
 - **`/usage-hud wear <item>`** and **`/usage-hud remove <item>`** change the outfit (`wear none` takes it all off).
+- **`/usage-hud update`** checks for a new version now and installs it.
 - **`↻`** refreshes the figures (`r` in the terminal while the band has focus).
 
 The desktop Code tab draws the pixel version. The terminal shows text bars with a face like `(°□°;)`.
 
-To update, run `git pull` in `~/claude-usage-mod`.
+## Updating
+
+The mod checks GitHub for a newer release every few hours. When there is one, the band shows an **Update to v…** button (`u: update v…` in the terminal; `u` presses it while the band has focus). Pressing it moves your clone to that release with `git fetch` and a fast-forward merge, so your own changes are never overwritten; if git can't fast-forward, it tells you and changes nothing.
+
+Sessions that are already open pick up the new version in place: Claude Code watches the mod's folder, reloads it once the files change, and Clawd says he updated. Your level, coins and saved limits carry over. If a session doesn't watch the folder (the desktop app without `CLAUDE_CODE_PLUGIN_DIR_WATCH`), the band says to restart, and the next session loads the new version.
+
+You can always update by hand with `git pull` in `~/claude-usage-mod`. Set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` to turn the check off.

@@ -1,12 +1,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Activity, Game, Gauges, Limit, Progress, Snapshot } from '../types'
+import type { Activity, Game, Gauges, Limit, Progress, Snapshot, Update } from '../types'
 
 const gauges = atom({ plugin: 'usage-hud', key: 'gauges' } as const, { cur: null, prev: null })
 const isHidden = atom({ plugin: 'usage-hud', key: 'isHidden' } as const, false)
 const activity = atom({ plugin: 'usage-hud', key: 'activity' } as const, 'idle')
 const game = atom({ plugin: 'usage-hud', key: 'game' } as const, { progress: null, burst: false })
+const updates = atom({ plugin: 'usage-hud', key: 'update' } as const, { current: '0.0.0', phase: 'idle' })
 
 // #region drawing: pure, no $; scripts/render-docs.ts renders the README images from it
 const SWEEP_MS = 1400
@@ -1048,6 +1049,31 @@ function undressed(prev: Progress, arg: string): Step {
 }
 // #endregion game
 
+// #region versions: pure, no $
+const REPO = 'lucassimzq/claude-usage-mod'
+const CHECK_EVERY_MS = 6 * 3_600_000 // GitHub allows 60 unauthenticated calls an hour
+
+/** `v1.2.3` or `1.2.3` as numbers; anything else (a pre-release, a stray tag) is not a release. */
+function versionOf(tag: string): number[] | undefined {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(tag.trim())
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : undefined
+}
+
+function isNewer(a: string, b: string): boolean {
+  const x = versionOf(a)
+  const y = versionOf(b)
+  if (!x || !y) return false
+  const i = x.findIndex((n, k) => n !== y[k])
+  return i >= 0 && x[i]! > y[i]!
+}
+
+function highestTag(names: string[]): string | undefined {
+  return names.filter(n => versionOf(n)).reduce<string | undefined>((best, n) => (!best || isNewer(n, best) ? n : best), undefined)
+}
+
+const plainVersion = (tag: string) => tag.replace(/^v/, '')
+// #endregion versions
+
 function bar(pct: number, cells = 5): string {
   const full = Math.round((Math.min(100, pct) / 100) * cells)
   return '▰'.repeat(full) + '▱'.repeat(cells - full)
@@ -1143,6 +1169,72 @@ async function refresh($: EngineInterface) {
   $.ui.toast('Usage refreshed', { timeoutMs: 1500 })
 }
 
+// The version this module was loaded from; a reload reads it again.
+let running = '0.0.0'
+let restartHint: { cancel: () => void } | undefined
+const LATEST = 'latest' // { tag, checkedAt }: the last answer from GitHub, shared by every session
+const INSTALLING = 'installing' // the tag a press last installed, so the reloaded mod can say so
+
+// Asks GitHub for the newest release tag at most every few hours (any session's answer
+// counts), and marks the band when it's newer than what's running.
+async function checkForUpdate($: EngineInterface, isForced = false): Promise<string | undefined> {
+  const now = await $.clock.now()
+  const saved = (await $.store.get(LATEST)) as { tag?: string; checkedAt?: number } | undefined
+  let tag = saved?.tag
+  const isDue = isForced || !saved?.checkedAt || now - saved.checkedAt >= CHECK_EVERY_MS
+  if (isDue && !(await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'))) {
+    try {
+      const res = await $.http.fetch(`https://api.github.com/repos/${REPO}/tags?per_page=100`, {
+        headers: { accept: 'application/vnd.github+json', 'user-agent': 'usage-hud' },
+      })
+      if (res.ok) {
+        const list = JSON.parse(res.text) as { name: string }[]
+        tag = highestTag(list.map(t => t.name))
+        await $.store.set(LATEST, { tag, checkedAt: now })
+      }
+    } catch {
+      // Offline or refused: keep what we knew and try again on the next check.
+    }
+  }
+  const latest = tag && isNewer(tag, running) ? tag : undefined
+  await update($, updates, (u: Update): Update => ({ ...u, current: running, latest }))
+  return latest
+}
+
+// Brings the clone up to the newest release tag with git. The folder is watched, so in
+// most sessions the mod reloads itself a moment later and this module is replaced; if
+// it's still here after that, the session doesn't watch the folder and needs a restart.
+async function installUpdate($: EngineInterface): Promise<string> {
+  const { latest, phase } = await read($, updates)
+  if (!latest) return `usage-hud is up to date (v${running}).`
+  if (phase !== 'idle') return `usage-hud ${latest} is already ${phase === 'installing' ? 'being installed' : 'installed; restart Claude Code to load it'}.`
+  const root = $.plugin.root
+  const git = (...args: string[]) => $.process.run(['git', '-C', root, ...args], { timeoutMs: 60_000 })
+  const manual = `Run \`git -C ${root} pull\` to update by hand.`
+  try {
+    const clone = await git('rev-parse', '--is-inside-work-tree')
+    if (clone.exitCode !== 0) return `usage-hud ${latest} is out, but this copy isn't a git clone. Update it the way you installed it.`
+    await update($, updates, (u: Update): Update => ({ ...u, phase: 'installing' }))
+    const fetched = await git('fetch', '--tags', '--quiet', 'origin')
+    const result = fetched.exitCode === 0 ? await git('merge', '--ff-only', '--quiet', `refs/tags/${latest}`) : fetched
+    if (result.exitCode !== 0) {
+      await update($, updates, (u: Update): Update => ({ ...u, phase: 'idle' }))
+      const why = result.stderr.trim().split('\n')[0] || `git exited with ${result.exitCode}`
+      return `Couldn't update usage-hud: ${why}. ${manual}`
+    }
+    await $.store.set(INSTALLING, latest)
+    restartHint?.cancel()
+    restartHint = $.clock.after(8000, () => {
+      void update($, updates, (u: Update): Update => ({ ...u, phase: 'restart' }))
+      $.ui.toast(`usage-hud ${latest} is installed. Restart Claude Code to load it.`)
+    })
+    return `Installing usage-hud ${latest}…`
+  } catch {
+    await update($, updates, (u: Update): Update => ({ ...u, phase: 'idle' }))
+    return `Couldn't run git here. ${manual}`
+  }
+}
+
 // Writes only on a change, since a response streams many chunks of the same kind.
 let doing: Activity = 'idle'
 
@@ -1156,8 +1248,25 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'usage-hud',
-      description: "Show or hide the usage band; `stats` for Clawd's level, `shop` to spend coins on outfits",
-      argumentHint: '[stats | shop | buy <item> | wear <item> | remove <item>]',
+      description: "Show or hide the usage band; `stats` for Clawd's level, `shop` to spend coins on outfits, `update` to get the newest version",
+      argumentHint: '[stats | shop | buy <item> | wear <item> | remove <item> | update]',
+    })
+    try {
+      const manifest = JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`)) as { version?: string }
+      running = manifest.version ?? running
+    } catch {
+      // No readable manifest: every release counts as newer, which is the safe side.
+    }
+    // A reload after an update lands here with the new code: say so once.
+    const installed = (await $.store.get(INSTALLING)) as string | undefined
+    if (installed) {
+      await $.store.delete(INSTALLING)
+      if (!isNewer(installed, running)) $.ui.toast(`Clawd updated himself to v${running}`)
+    }
+    await update($, updates, (): Update => ({ current: running, phase: 'idle' }))
+    void checkForUpdate($)
+    $.clock.every(CHECK_EVERY_MS, () => {
+      void checkForUpdate($)
     })
     const saved = progressOf(await $.store.get(PROGRESS))
     await update($, game, () => ({ progress: saved, burst: false }))
@@ -1205,6 +1314,10 @@ export const register: Register = on => {
     if (verb === 'stats') {
       return { text: statsOf(progressOf(await $.store.get(PROGRESS)), await $.clock.now()) }
     }
+    if (verb === 'update') {
+      const latest = await checkForUpdate($, true)
+      return { text: latest ? await installUpdate($) : `usage-hud is up to date (v${running}).` }
+    }
     if (verb === 'shop') {
       return { text: shopOf(progressOf(await $.store.get(PROGRESS))) }
     }
@@ -1228,12 +1341,16 @@ export const register: Register = on => {
     const list = tanksOf(cur, prev, now)
     const { progress, burst } = await read($, game)
     const view = progress ? gameViewOf(progress, now, burst) : undefined
+    const { latest, phase } = await read($, updates)
+    const updateLabel = !latest ? undefined : phase === 'installing' ? 'updating…' : phase === 'restart' ? `restart for ${latest}` : undefined
+    const onUpdate = async () => $.ui.toast(await installUpdate($))
 
     if (e.surface === 'desktop') {
-      const { Box, Button, Svg } = $.ui.resolve(e)
+      const { Box, Button, Svg, Text } = $.ui.resolve(e)
       const columns = e.props.bodyColumns || e.viewport?.columns || 100
       // The image can't take a press, so the refresh control is a real Button beside it.
-      const width = Math.max(160, Math.round(columns * PX_PER_COLUMN) - REFRESH_W)
+      const offer = latest && phase === 'idle' ? `Update to ${latest}` : updateLabel
+      const width = Math.max(160, Math.round(columns * PX_PER_COLUMN) - REFRESH_W - (offer ? offer.length * 7 + 28 : 0))
       // Drawn as an image, not an interactive frame: it stays transparent, and SMIL still plays.
       return (
         <Box flexDirection="row" alignItems="center" gap={1}>
@@ -1243,6 +1360,11 @@ export const register: Register = on => {
             width={width}
             height={HEIGHT}
           />
+          {latest && phase === 'idle' ? (
+            <Button key="update" label={`Update to ${latest}`} variant="primary" onPress={onUpdate} />
+          ) : updateLabel ? (
+            <Text dimColor>{updateLabel}</Text>
+          ) : null}
           <Button key="refresh" label="↻" plain dimColor onPress={() => refresh($)} />
         </Box>
       )
@@ -1262,7 +1384,9 @@ export const register: Register = on => {
         !view || g === 'none' ? 0 : level.length + 1 + xpBar.length + 2 + (g === 'full' && flame ? flame.length + 2 : 0)
       // Fit the row to the terminal: give up the streak, the level, the long note, the cost,
       // the short note, then the bars.
-      const cols = e.props.bodyColumns || e.viewport?.columns || 80
+      // The update offer is never given up: it sits at the right, and the rest fits around it.
+      const offer = latest && phase === 'idle' ? `u: update ${latest}` : updateLabel
+      const cols = (e.props.bodyColumns || e.viewport?.columns || 80) - (offer ? offer.length + 2 : 0)
       const figures = (bars: boolean) => list.reduce((w, t) => w + t.tag.length + (bars ? 6 : 0) + 5 + 2, 0)
       const widthOf = (bars: boolean, note: string | undefined, cost: string | undefined, g: GameFit) =>
         face.length + 2 + gameWidth(g) + figures(bars) + (cost ? cost.length + 2 : 0) + (note ? note.length + 2 : 0) + 3
@@ -1299,6 +1423,11 @@ export const register: Register = on => {
           ))}
           {cost ? <Text dimColor>{cost}</Text> : null}
           {note ? <Text color={color(worst.pct)}>{note}</Text> : null}
+          {latest && phase === 'idle' ? (
+            <Button key="update" label={`update ${latest}`} plain hotkey="u" onPress={onUpdate} />
+          ) : updateLabel ? (
+            <Text dimColor>{updateLabel}</Text>
+          ) : null}
           <Button key="refresh" label="↻" plain dimColor hotkey="r" onPress={() => refresh($)} />
         </Box>
       )
