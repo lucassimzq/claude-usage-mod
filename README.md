@@ -12,6 +12,8 @@
 
 Keep your context window, 5-hour session limit and weekly limit in view above the Claude Code prompt, with no menu to open. A pixel Clawd sits beside them, doing his own thing, and gets more nervous the closer you get to a limit.
 
+> This is an unofficial fan project, not affiliated with or endorsed by Anthropic. Claude, Claude Code and Clawd are trademarks and characters of Anthropic.
+
 ## How it looks
 
 Clawd's mood follows whichever of the three numbers is highest.
@@ -120,3 +122,7 @@ The mod checks GitHub for a newer release every few hours. When there is one, th
 Sessions that are already open pick up the new version in place: Claude Code watches the mod's folder, reloads it once the files change, and Clawd says he updated. Your level, coins and saved limits carry over. If a session doesn't watch the folder (the desktop app without `CLAUDE_CODE_PLUGIN_DIR_WATCH`), the band says to restart, and the next session loads the new version.
 
 You can always update by hand with `git pull` in `~/claude-usage-mod`. Set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` to turn the check off.
+
+## Disclaimer
+
+This is an independent fan project. It is not made, sponsored or endorsed by Anthropic. Claude, Claude Code and Clawd belong to Anthropic, and the pixel Clawd here is fan art of their mascot. If Anthropic asks for any of this to change, it will.
