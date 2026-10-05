@@ -102,7 +102,7 @@ test('the shop sells for coins, and coins come from written tokens, levels and b
   // 900 + 200 written tokens make one coin; First Steps adds 25
   await turn($)
   expect(await stats($)).toMatch(/Coins: 226/)
-  expect(await run('shop')).toMatch(/Head: beanie free at level 5 \(wearing\) · .* · flower 80 · cap 100 · party hat 150 · halo 1,200 \(needs level 15\)/)
+  expect(await run('shop list')).toMatch(/Head: beanie free at level 5 \(wearing\) · .* · flower 80 · cap 100 · party hat 150 · halo 1,200 \(needs level 15\)/)
   expect(await run('buy crown')).toBe('The crown needs level 20, and Clawd is level 5.')
   expect(await run('buy the party hat')).toBe("Bought the party hat for 150 coins, and Clawd's wearing it. 76 coins left.")
   expect(await run('buy party')).toMatch(/already have the party hat/)

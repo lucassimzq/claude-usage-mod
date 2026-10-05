@@ -300,7 +300,8 @@ const SHELLS: Record<string, string> = {
 }
 
 // Each mood is a small scene, not a dance: Clawd holds still and one prop moves, slowly.
-function clawdSvg(mood: Mood, doing: Activity, outfit: Record<string, string> = {}, burst = false): string {
+// `props` false leaves out the scene (headphones, notes, mug, flames): Clawd alone, as the shop shows him.
+function clawdSvg(mood: Mood, doing: Activity, outfit: Record<string, string> = {}, burst = false, props = true): string {
   const path = (d: string, fill: string, extra = '') => (d ? `<path d="${d}" fill="${fill}"${extra}/>` : '')
   const grid = (g: string[], fill: string, ch = '#', ox = 0, oy = 0, p = P) => path(pixels(g, ox, oy, p, ch), fill)
   const toggle = (dur: string, first: boolean) =>
@@ -317,7 +318,7 @@ function clawdSvg(mood: Mood, doing: Activity, outfit: Record<string, string> = 
 
   const typing = doing === 'typing' && mood !== 'asleep'
   const thinking = doing === 'thinking' && mood !== 'asleep'
-  const holdsMug = !typing && (mood === 'anxious' || mood === 'panic')
+  const holdsMug = props && !typing && (mood === 'anxious' || mood === 'panic')
   const shell = outfit.shell ? SHELLS[outfit.shell] : undefined
   const body = shell ?? (mood === 'asleep' ? COLORS.sleepy : CLAWD)
   const fx = (holdsMug ? 16 : 13) * P + 1 // where the props on the right begin
@@ -336,7 +337,7 @@ function clawdSvg(mood: Mood, doing: Activity, outfit: Record<string, string> = 
         `<g opacity="0">${grid(CLOSED, INK)}<animate attributeName="opacity" values="0;1" keyTimes="0;0.94" calcMode="discrete" dur="5s" repeatCount="indefinite"/></g>`
       : grid(eyesOf(mood), INK)
   const blush = mood === 'happy' ? grid(BLUSH, '#dba3ae') : ''
-  const headphones = mood === 'happy' ? grid(HEADPHONES, COLORS.band, 'b', 0, -P) + grid(HEADPHONES, COLORS.cups, 'c', 0, -P) : ''
+  const headphones = props && mood === 'happy' ? grid(HEADPHONES, COLORS.band, 'b', 0, -P) + grid(HEADPHONES, COLORS.cups, 'c', 0, -P) : ''
   const tense = mood === 'frantic' || mood === 'panic' || mood === 'asleep'
   const hat = -2 * P
   const art: Record<string, () => string> = {
@@ -426,7 +427,7 @@ function clawdSvg(mood: Mood, doing: Activity, outfit: Record<string, string> = 
   return `<g transform="translate(8 5)">
     ${wearing('back')}${legs}<path d="${pixels(BODY, 0, 0, P)}" fill="${body}"/>
     ${headphones}${eyes}${blush}${arms}${wearing('neck')}${wearing('face')}${wearing('head')}${laptop}${mug}${wearing('buddy')}
-    ${left[mood]}${thinking ? thought : right[mood]}${sparkles}
+    ${props ? left[mood] : ''}${thinking ? thought : props ? right[mood] : ''}${sparkles}
   </g>`
 }
 
@@ -738,6 +739,15 @@ function gameSvg(v: GameView, x: number, fit: Exclude<GameFit, 'none'>): { svg: 
 const grid4 = (g: string[], fill: string, ch: string, x: number, y: number) =>
   `<path d="${pixels(g, x, y, 1.4, ch)}" fill="${fill}"/>`
 
+/** Clawd alone in an outfit, for the shop: `scale` screen pixels per unit. */
+function wardrobeSvg(outfit: Record<string, string>, scale: number): string {
+  const w = 44
+  const h = 28
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w * scale}" height="${h * scale}" viewBox="-2 -2 ${w} ${h}" shape-rendering="crispEdges">
+  ${clawdSvg('happy', 'idle', outfit, false, false)}
+</svg>`
+}
+
 const FACES: Record<Mood, string> = {
   happy: '(^‿^)',
   anxious: '(・_・;)',
@@ -1047,6 +1057,24 @@ function undressed(prev: Progress, arg: string): Step {
   }
   return step
 }
+/** One item on the shop's shelf, and what a press on it does: take off, put on, buy, or nothing yet. */
+type Shelf = { id: string; name: string; slot: Slot; state: 'wearing' | 'owned' | 'buy' | 'short' | 'locked'; price?: number; level?: number }
+
+function shelfOf(p: Progress): Shelf[] {
+  const level = levelOf(p.xp)
+  const worn = outfitOf(p, level)
+  return Object.entries(ITEMS).map(([id, item]): Shelf => {
+    const shelf = { id, name: item.name, slot: item.slot, price: item.price }
+    if (worn[item.slot] === id) return { ...shelf, state: 'wearing' }
+    if (owns(p, level, id)) return { ...shelf, state: 'owned' }
+    if (!item.price) return { ...shelf, state: 'locked', level: unlockLevel(id) }
+    if (item.level && level < item.level) return { ...shelf, state: 'locked', level: item.level }
+    return { ...shelf, state: p.coins < item.price ? 'short' : 'buy' }
+  })
+}
+
+/** What a press on an item does, as the text command would: `wear`, `remove` or `buy`. */
+const pressOf = (s: Shelf) => (s.state === 'wearing' ? undressed : s.state === 'owned' ? dressed : s.state === 'buy' ? bought : undefined)
 // #endregion game
 
 // #region versions: pure, no $
@@ -1238,6 +1266,22 @@ async function installUpdate($: EngineInterface): Promise<string> {
 // Writes only on a change, since a response streams many chunks of the same kind.
 let doing: Activity = 'idle'
 
+const SHOP = 'shop'
+const SLOT_NAMES: Record<Slot, string> = { head: 'Head', face: 'Face', neck: 'Neck', back: 'Back', shell: 'Shell', buddy: 'Buddy' }
+
+// Opens the shop pane where the person asked for it; the text list stands in where it can't be drawn.
+async function openShop($: EngineInterface): Promise<string> {
+  const opened = await $.ui.open({ id: SHOP, title: "Clawd's shop", focus: true, closeOnEscape: true, rows: 12 }).catch(() => undefined)
+  if (opened?.isPlaced) return "Opened Clawd's shop: pick something to wear, buy or take off. Esc closes it."
+  return shopOf(progressOf(await $.store.get(PROGRESS)))
+}
+
+// A press in the shop: the same change the text command makes, its answer as a toast.
+async function shopPress($: EngineInterface, change: (p: Progress, arg: string) => Step, arg: string) {
+  const reply = await play($, p => change(p, arg))
+  if (reply) $.ui.toast(reply, { timeoutMs: 3000 })
+}
+
 async function setActivity($: EngineInterface, next: Activity) {
   if (next === doing) return
   doing = next
@@ -1249,7 +1293,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'usage-hud',
       description: "Show or hide the usage band; `stats` for Clawd's level, `shop` to spend coins on outfits, `update` to get the newest version",
-      argumentHint: '[stats | shop | buy <item> | wear <item> | remove <item> | update]',
+      argumentHint: '[stats | shop | shop list | buy <item> | wear <item> | remove <item> | update]',
     })
     try {
       const manifest = JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`)) as { version?: string }
@@ -1318,11 +1362,15 @@ export const register: Register = on => {
       const latest = await checkForUpdate($, true)
       return { text: latest ? await installUpdate($) : `usage-hud is up to date (v${running}).` }
     }
-    if (verb === 'shop') {
+    const arg = rest.join(' ')
+    // The shop opens as a pane; `wear`, `remove` and `buy` without an item open it too.
+    if (verb === 'shop' && arg === 'list') {
       return { text: shopOf(progressOf(await $.store.get(PROGRESS))) }
     }
+    if (verb === 'shop' || ((verb === 'buy' || verb === 'wear' || verb === 'remove') && !arg)) {
+      return { text: await openShop($) }
+    }
     // Each of these reads the progress fresh inside play(), so a purchase can't race a turn.
-    const arg = rest.join(' ')
     const change = verb === 'buy' ? bought : verb === 'wear' ? dressed : verb === 'remove' ? undressed : undefined
     if (change) {
       return { text: (await play($, p => change(p, arg))) ?? 'Something went wrong; nothing changed.' }
@@ -1330,6 +1378,116 @@ export const register: Register = on => {
     let hidden = false
     await update($, isHidden, h => (hidden = !h))
     return { text: hidden ? 'Usage roads hidden.' : 'Usage roads shown.' }
+  })
+
+  // The shop: every item in its slot, pressed to wear, buy or take off.
+  on('ui.render', { component: 'Pane', requestId: SHOP }, async ($, e) => {
+    const p = (await read($, game)).progress ?? progressOf(await $.store.get(PROGRESS))
+    const level = levelOf(p.xp)
+    const worn = outfitOf(p, level)
+    const shelf = shelfOf(p)
+    const first = shelf.find(s => s.state === 'wearing' || s.state === 'owned')?.id
+    const coins = `${p.coins.toLocaleString('en-US')} coins`
+    const wearing = SLOTS.flatMap(slot => (worn[slot] ? [nameOf(worn[slot])] : []))
+
+    if (e.surface === 'terminal') {
+      const { Box, Button, Text } = $.ui.resolve(e)
+      const label = (s: Shelf) =>
+        s.state === 'wearing' ? `● ${s.name}` : s.state === 'buy' || s.state === 'short' ? `${s.name} ${s.price}c` : s.state === 'locked' ? `${s.name} Lv${s.level}` : s.name
+      return (
+        <Box flexDirection="column">
+          <Text>
+            <Text color={CLAWD}>{FACES.happy}</Text>
+            <Text bold>{`  Level ${level} ${titleOf(level)}`}</Text>
+            <Text dimColor> · </Text>
+            <Text color="yellow">{coins}</Text>
+            <Text dimColor>{` · wearing ${wearing.join(', ') || 'nothing'}`}</Text>
+          </Text>
+          {SLOTS.map(slot => (
+            <Box key={slot} flexDirection="row" gap={1}>
+              <Box width={6} flexShrink={0}>
+                <Text dimColor>{SLOT_NAMES[slot]}</Text>
+              </Box>
+              <Box flexDirection="row" flexWrap="wrap" columnGap={1} flexShrink={1}>
+                {shelf
+                  .filter(s => s.slot === slot)
+                  .map(s => {
+                    const change = pressOf(s)
+                    return change ? (
+                      <Button
+                        key={`item:${s.id}`}
+                        label={label(s)}
+                        variant={s.state === 'wearing' ? 'primary' : undefined}
+                        autoFocus={s.id === first || undefined}
+                        onPress={() => shopPress($, change, s.id)}
+                      />
+                    ) : (
+                      <Text key={`item:${s.id}`} dimColor>{` ${label(s)} `}</Text>
+                    )
+                  })}
+              </Box>
+            </Box>
+          ))}
+          <Box flexDirection="row" gap={2}>
+            <Button key="none" label="take all off" plain dimColor onPress={() => shopPress($, dressed, 'none')} />
+            <Text dimColor>Tab or arrows move · Enter wears, buys or takes off · Esc closes</Text>
+          </Box>
+        </Box>
+      )
+    }
+
+    const { Box, Button, Svg, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column" gap={1} padding={1}>
+        <Box flexDirection="row" alignItems="center" gap={2}>
+          <Svg source={wardrobeSvg(worn, 3)} alt={`Clawd wearing ${wearing.join(', ') || 'nothing'}`} width={132} height={84} />
+          <Box flexDirection="column" flexGrow={1}>
+            <Text bold>{`Level ${level} · ${titleOf(level)}`}</Text>
+            <Text color={COLORS.golden}>{coins}</Text>
+            <Text dimColor>{`1 coin per ${COINS.perTokens.toLocaleString('en-US')} tokens Claude writes, ${COINS.level} per level, ${COINS.badge} per badge`}</Text>
+          </Box>
+          <Button key="none" label="Take everything off" onPress={() => shopPress($, dressed, 'none')} />
+        </Box>
+        {SLOTS.map(slot => (
+          <Box key={slot} flexDirection="column" gap={1}>
+            <Text bold>{SLOT_NAMES[slot]}</Text>
+            <Box flexDirection="row" flexWrap="wrap" gap={1}>
+              {shelf
+                .filter(s => s.slot === slot)
+                .map(s => {
+                  const change = pressOf(s)
+                  // Each card shows Clawd trying the item on with the rest of his outfit.
+                  return (
+                    <Box
+                      key={`card:${s.id}`}
+                      flexDirection="column"
+                      alignItems="center"
+                      gap={1}
+                      padding={1}
+                      borderStyle="round"
+                      borderColor={s.state === 'wearing' ? CLAWD : undefined}
+                      borderDimColor={s.state !== 'wearing'}
+                    >
+                      <Svg source={wardrobeSvg({ ...worn, [slot]: s.id }, 2.5)} alt={`Clawd in the ${s.name}`} width={110} height={70} />
+                      <Text dimColor={!change}>{s.name}</Text>
+                      {change ? (
+                        <Button
+                          key={`item:${s.id}`}
+                          label={s.state === 'wearing' ? 'Take off' : s.state === 'owned' ? 'Wear' : `Buy · ${s.price?.toLocaleString('en-US')}`}
+                          variant={s.state === 'buy' ? 'primary' : 'secondary'}
+                          onPress={() => shopPress($, change, s.id)}
+                        />
+                      ) : (
+                        <Text dimColor>{s.state === 'locked' ? `Level ${s.level}` : `${s.price?.toLocaleString('en-US')} coins`}</Text>
+                      )}
+                    </Box>
+                  )
+                })}
+            </Box>
+          </Box>
+        ))}
+      </Box>
+    )
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
