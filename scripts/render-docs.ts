@@ -39,12 +39,14 @@ function snapshot(ctx: number, session: number, weekly: number) {
 }
 
 // The band as it sits above the prompt: a dark card, the refresh glyph, a mock prompt box.
-function card(snap: ReturnType<typeof snapshot>): string {
+type View = { level: number; frac: number; streak: number; outfit?: Record<string, string> }
+
+function card(snap: ReturnType<typeof snapshot>, view?: View): string {
   const pad = 14
   const w = BAND_W + 30 + pad * 2
   const h = 24 + 10 + 30 + pad * 2
   const scale = 1.25
-  const band = pixelSvg(tanksOf(snap, null, NOW), snap.usd, 'idle', BAND_W).replace('<svg ', `<svg x="${pad}" y="${pad}" `)
+  const band = pixelSvg(tanksOf(snap, null, NOW), snap.usd, 'idle', BAND_W, view).replace('<svg ', `<svg x="${pad}" y="${pad}" `)
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w * scale)}" height="${Math.round(h * scale)}" viewBox="0 0 ${w} ${h}">
   <rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="12" fill="#1f1f1f" stroke="#333"/>
   ${band}
@@ -105,4 +107,17 @@ writeFileSync(join(root, 'docs/banner.svg'), banner())
 for (const [name, snap] of Object.entries(states)) {
   writeFileSync(join(root, `docs/states/${name}.svg`), card(snap))
 }
-console.log(`wrote docs/banner.svg and ${Object.keys(states).length} state cards`)
+
+// Clawd at a few levels, each in what that level unlocks.
+const levels: Record<string, View> = {
+  'level-5': { level: 5, frac: 0.7, streak: 5, outfit: { head: 'beanie', neck: 'scarf' } },
+  'level-15': { level: 15, frac: 0.6, streak: 21, outfit: { head: 'hardhat', face: 'sunglasses', neck: 'scarf' } },
+  'level-30': { level: 30, frac: 0.5, streak: 60, outfit: { head: 'wizard', face: 'sunglasses', back: 'cape' } },
+  // Shop buys: a party hat, a bow tie, a mint shell and a desk plant.
+  shop: { level: 8, frac: 0.3, streak: 6, outfit: { head: 'party', neck: 'bowtie', shell: 'mint', buddy: 'plant' } },
+}
+mkdirSync(join(root, 'docs/levels'), { recursive: true })
+for (const [name, view] of Object.entries(levels)) {
+  writeFileSync(join(root, `docs/levels/${name}.svg`), card(snapshot(18, 27, 40), view))
+}
+console.log(`wrote docs/banner.svg, ${Object.keys(states).length} state cards and ${Object.keys(levels).length} level cards`)

@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Claude%20Code-mod-D97757?style=for-the-badge" alt="Claude Code mod">
-  <img src="https://img.shields.io/badge/version-0.1.0-6b9e7a?style=for-the-badge" alt="Version 0.1.0">
+  <img src="https://img.shields.io/badge/version-0.0.1-6b9e7a?style=for-the-badge" alt="Version 0.0.1">
   <img src="https://img.shields.io/badge/requires-2.1.286%2B-444?style=for-the-badge" alt="Requires Claude Code 2.1.286 or later">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c4a05a?style=for-the-badge" alt="MIT license"></a>
   <a href="https://github.com/lucassimzq"><img src="https://img.shields.io/badge/made%20by-lucassimzq-111?style=for-the-badge" alt="Made by lucassimzq"></a>
@@ -50,6 +50,31 @@ While Claude works, Clawd joins in: a thought bubble while Claude thinks, and a 
 
 You also get a short pop-up when a limit passes 50%, 80% or 95%.
 
+## Levels
+
+Clawd earns XP as you work and levels up. The level, a thin bar toward the next one, and your daily streak sit beside him.
+
+<img src="docs/levels/level-15.svg" alt="Clawd in a hard hat beside Lv15, a 21-day streak flame and the usage bars" width="100%">
+
+- **XP:** 10 per turn (2 after your first 60 of the day), 25 for the first turn of each day, and 5 per point your weekly limit rises.
+- **Pacing pays:** a 5-hour window that peaks at 60–99% earns 100 XP, one at 30–59% earns 40.
+- **Maxing out pays too:** the moment a limit reaches 100% you get 60 XP for the 5-hour window or 150 for the weekly one, once per window.
+- **Streaks:** each day with a turn adds one. Every 7 days earns a rest day (you can hold 2), which covers a day off.
+- **Badges:** thirteen to find, like Close Call (a week that peaked at 95–99%), Maxed Out, Zen (a week under 50%) and Night Owl. Each is worth 50 XP.
+- **Unlocks:** a scarf at level 3, then a beanie (5), sunglasses (10), a hard hat (15), a cape (20), a wizard hat (30) and a golden shell (50). Clawd wears the newest one.
+
+Level `L` needs `50 × L × (L − 1)` XP in all, so daily use reaches level 10 in about a week and level 50 in about seven months. Progress counts from when you install the mod and is shared by all your sessions.
+
+<img src="docs/levels/level-30.svg" alt="Clawd in a wizard hat beside Lv30 and a 60-day streak" width="100%">
+
+## The shop
+
+Tokens become coins: 1 for every 1,000 tokens Claude writes, plus 100 per level-up and 25 per badge. Spend them in the shop on things for Clawd to wear.
+
+<img src="docs/levels/shop.svg" alt="A mint-colored Clawd in a party hat and bow tie, with a desk plant beside him" width="100%">
+
+Clawd has six slots, so outfits mix: **head** (flower, cap, party hat, halo, crown), **face** (mustache, round glasses, monocle), **neck** (bow tie, medal), **back** (wings), **shell** (mint, lilac, rose, midnight) and a **buddy** beside him (desk plant, tiny crab). Prices run from 50 to 2,000 coins, and the fanciest items also need a minimum level. Level unlocks stay free and fill their slots until you pick something else.
+
 ## Install
 
 Clone the repo:
@@ -63,10 +88,13 @@ To load it in every session, including the desktop app, add it to the `env` bloc
 ```json
 {
   "env": {
-    "CLAUDE_CODE_PLUGIN_DIRS": "~/claude-usage-mod"
+    "CLAUDE_CODE_PLUGIN_DIRS": "~/claude-usage-mod",
+    "CLAUDE_CODE_PLUGIN_DIR_WATCH": "1"
   }
 }
 ```
+
+`CLAUDE_CODE_PLUGIN_DIR_WATCH` lets the desktop app pick up an update without a restart; the terminal does that on its own.
 
 Or try it for a single terminal session:
 
@@ -79,11 +107,21 @@ You need Claude Code 2.1.286 or later. The `5h` and `7d` bars need a Claude subs
 ## Use
 
 - **`/usage-hud`** hides or shows the band.
+- **`/usage-hud stats`** shows Clawd's level, XP, streak, coins, tokens counted and badges.
+- **`/usage-hud shop`** lists everything with prices and your coins; **`/usage-hud buy <item>`** buys it and puts it on.
+- **`/usage-hud wear <item>`** and **`/usage-hud remove <item>`** change the outfit (`wear none` takes it all off).
+- **`/usage-hud update`** checks for a new version now and installs it.
 - **`↻`** refreshes the figures (`r` in the terminal while the band has focus).
 
 The desktop Code tab draws the pixel version. The terminal shows text bars with a face like `(°□°;)`.
 
-To update, run `git pull` in `~/claude-usage-mod`.
+## Updating
+
+The mod checks GitHub for a newer release every few hours. When there is one, the band shows an **Update to v…** button (`u: update v…` in the terminal; `u` presses it while the band has focus). Pressing it moves your clone to that release with `git fetch` and a fast-forward merge, so your own changes are never overwritten; if git can't fast-forward, it tells you and changes nothing.
+
+Sessions that are already open pick up the new version in place: Claude Code watches the mod's folder, reloads it once the files change, and Clawd says he updated. Your level, coins and saved limits carry over. If a session doesn't watch the folder (the desktop app without `CLAUDE_CODE_PLUGIN_DIR_WATCH`), the band says to restart, and the next session loads the new version.
+
+You can always update by hand with `git pull` in `~/claude-usage-mod`. Set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` to turn the check off.
 
 ## Disclaimer
 
