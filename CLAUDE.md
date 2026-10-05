@@ -44,7 +44,7 @@ The update check compares `plugin.json`'s `version` with git tags, so a release 
 - `turn.complete` (main conversation only) earns turn XP, the daily bonus, streaks and time badges. `take()` passes each reading to `afterMeasure`: weekly-point XP, window peaks, and pacing scores when a window's reset time has passed. A reading whose own reset time has passed is stale and skipped, so a window is never scored twice.
 - Nothing is earned for usage from before the game first saw a window.
 - Reaching 100% pays out at once (`maxedOut()`), once per window: Lucas wanted hitting the limit to feel like a win, not a penalty.
-- In `planOf()` the level cluster is the first thing to give way: the streak, then the rest of it.
+- In `planOf()` the level cluster is the first thing to give way: the streak, then the rest of it. The cluster stacks `Lv` (font pixel `LV_P`), the XP bar and the coin balance (`COIN_P`, `coinsLabel()` keeps it to four characters) in the band's 24px; the terminal shows the coins as `●1.2k` after the XP bar.
 - Coins: 1 per 1,000 written tokens (the remainder carries in `coinTokens`), 100 per level-up (added in `play()`), 25 per badge. Cache tokens don't count, or prices would spiral.
 - `ITEMS` is the one catalog: level unlocks have no `price`. Each item has a slot; `outfitOf()` fills every slot with its newest level unlock unless `outfit` picks an owned item or `none`. Buddies sit left of Clawd and step aside for the panic flames.
 - Shop commands (`bought`, `dressed`, `undressed`) run inside `play()` so a purchase can't race a turn's write.

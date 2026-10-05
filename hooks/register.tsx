@@ -171,13 +171,15 @@ const FONT: Record<string, string[]> = {
   d: ['..#', '..#', '###', '#.#', '###'],
   L: ['#..', '#..', '#..', '#..', '###'],
   v: ['...', '#.#', '#.#', '#.#', '.#.'],
+  k: ['#..', '#.#', '##.', '#.#', '#.#'],
 }
 
-function textPixels(s: string, x: number, y: number): string {
-  return [...s].map((ch, i) => pixels(FONT[ch] ?? [], x + i * 4 * FP, y, FP)).join('')
+/** `s` in the pixel font, `p` px to a font pixel. */
+function textPixels(s: string, x: number, y: number, p = FP): string {
+  return [...s].map((ch, i) => pixels(FONT[ch] ?? [], x + i * 4 * p, y, p)).join('')
 }
 
-const textWidth = (s: string) => (s.length * 4 - 1) * FP
+const textWidth = (s: string, p = FP) => (s.length * 4 - 1) * p
 
 // Clawd, 13 pixels wide: a 9-wide body, arms either side, four legs. Row 0 is the top
 // of his head; props drawn above it (the headphone band) use negative rows.
@@ -279,6 +281,7 @@ const COLORS = {
   wizard: '#7d6bc4',
   golden: '#d9b25a',
   level: '#a99be0',
+  coin: '#d1ad55',
   wings: '#e2e2e2',
   party: '#d98fa0',
   cap: '#6b8fc4',
@@ -703,25 +706,56 @@ function liveStreak(p: Progress, now: number): number {
   return missed <= s.restDays ? s.count : 0
 }
 
-type GameView = { level: number; frac: number; streak: number; outfit?: Record<string, string>; burst?: boolean }
+type GameView = {
+  level: number
+  frac: number
+  streak: number
+  coins?: number
+  outfit?: Record<string, string>
+  burst?: boolean
+}
 
 function gameViewOf(p: Progress, now: number, burst = false): GameView {
   const level = levelOf(p.xp)
   const frac = (p.xp - xpFor(level)) / (xpFor(level + 1) - xpFor(level))
-  return { level, frac, streak: liveStreak(p, now), outfit: outfitOf(p, level), burst }
+  return { level, frac, streak: liveStreak(p, now), coins: p.coins, outfit: outfitOf(p, level), burst }
 }
 
-// The level cluster beside Clawd: `Lv7` over a thin XP bar, then a flame and the streak
-// from its third day.
+/** A coin count in at most four characters: `950`, `1.2k`, `12k`, `120k`. */
+function coinsLabel(n: number): string {
+  const c = Math.max(0, Math.floor(n))
+  if (c < 1000) return `${c}`
+  if (c < 10_000) return `${Math.floor(c / 100) / 10}k`
+  return `${Math.floor(c / 1000)}k`
+}
+
+const COIN = ['.###.', '#####', '#####', '#####', '.###.']
+const LV_P = 1.4 // the level's font pixel, a little smaller than the bars' so the coins fit below
+const COIN_P = 1.2
+
+// The level cluster beside Clawd: `Lv7` over a thin XP bar and the coin balance, then a
+// flame and the streak from its third day.
 function gameSvg(v: GameView, x: number, fit: Exclude<GameFit, 'none'>): { svg: string; width: number } {
   const ty = BY + (BH - 5 * FP) / 2
   const lv = `Lv${v.level}`
-  const lw = textWidth(lv)
-  const xy = ty + 5 * FP + 2.4
+  const hasCoins = v.coins !== undefined
+  // Without coins the level sits level with the figures; with them the three rows share the height.
+  const p = hasCoins ? LV_P : FP
+  const ly = hasCoins ? 2.5 : ty
+  const xy = ly + 5 * p + (hasCoins ? 1.6 : 2.4)
+  const cy = xy + 1.6 + 2.4
+  const coins = hasCoins ? coinsLabel(v.coins!) : ''
+  const cw = hasCoins ? 5 * COIN_P + 2 + textWidth(coins, COIN_P) : 0
+  const lw = Math.max(textWidth(lv, p), cw)
   let svg =
-    `<path d="${textPixels(lv, 0, ty)}" fill="${COLORS.level}"/>` +
-    `<path d="${rect(0, xy, lw, 1.6)}" fill="${MUTED}" opacity="0.3"/>` +
+    `<path d="${textPixels(lv, 0, ly, p)}" fill="${COLORS.level}"/>` +
+    `<path d="${rect(0, xy, n2(lw), 1.6)}" fill="${MUTED}" opacity="0.3"/>` +
     (v.frac > 0 ? `<path d="${rect(0, xy, n2(Math.max(1, lw * v.frac)), 1.6)}" fill="${COLORS.level}"/>` : '')
+  if (hasCoins) {
+    svg +=
+      `<path d="${pixels(COIN, 0, cy, COIN_P)}" fill="${COLORS.coin}"/>` +
+      `<path d="${textPixels(coins, 5 * COIN_P + 2, cy, COIN_P)}" fill="${MUTED}"/>`
+  }
   let width = lw
   if (fit === 'full' && v.streak >= 3) {
     const fx = lw + 7
@@ -1356,7 +1390,7 @@ export const register: Register = on => {
         <Box flexDirection="row" alignItems="center" gap={1}>
           <Svg
             source={pixelSvg(list, cur.usd, e.props.isWorking ? await read($, activity) : 'idle', width, view)}
-            alt={(view ? [`Level ${view.level}`] : []).concat(list.map(t => `${t.tag} ${Math.round(t.pct)}%`)).join(', ')}
+            alt={(view ? [`Level ${view.level}`].concat(view.coins !== undefined ? [`${view.coins} coins`] : []) : []).concat(list.map(t => `${t.tag} ${Math.round(t.pct)}%`)).join(', ')}
             width={width}
             height={HEIGHT}
           />
@@ -1376,12 +1410,15 @@ export const register: Register = on => {
       const worst = list.reduce((a, b) => (b.pct > a.pct ? b : a))
       const face = FACES[moodOf(worst.pct)]
       const usd = cur.usd === undefined ? '' : `$${cur.usd.toFixed(2)}`
-      // The level as `Lv7 ▰▰▱ 🔥5`; the flame counts as two columns.
+      // The level as `Lv7 ▰▰▱ ●1.2k 🔥5`; the flame counts as two columns.
       const level = view ? `Lv${view.level}` : ''
       const xpBar = view ? bar(view.frac * 100, 3) : ''
+      const coins = view?.coins !== undefined ? `●${coinsLabel(view.coins)}` : ''
       const flame = view && view.streak >= 3 ? `🔥${view.streak}` : ''
       const gameWidth = (g: GameFit) =>
-        !view || g === 'none' ? 0 : level.length + 1 + xpBar.length + 2 + (g === 'full' && flame ? flame.length + 2 : 0)
+        !view || g === 'none'
+          ? 0
+          : level.length + 1 + xpBar.length + (coins ? coins.length + 1 : 0) + 2 + (g === 'full' && flame ? flame.length + 2 : 0)
       // Fit the row to the terminal: give up the streak, the level, the long note, the cost,
       // the short note, then the bars.
       // The update offer is never given up: it sits at the right, and the rest fits around it.
@@ -1411,6 +1448,7 @@ export const register: Register = on => {
             <Text>
               <Text color="magenta">{level} </Text>
               <Text color="magenta" dimColor>{xpBar}</Text>
+              {coins ? <Text color="yellow" dimColor>{` ${coins}`}</Text> : null}
               {g === 'full' && flame ? <Text dimColor>{`  ${flame}`}</Text> : null}
             </Text>
           ) : null}

@@ -69,7 +69,7 @@ Level `L` needs `50 × L × (L − 1)` XP in all, so daily use reaches level 10 
 
 ## The shop
 
-Tokens become coins: 1 for every 1,000 tokens Claude writes, plus 100 per level-up and 25 per badge. Spend them in the shop on things for Clawd to wear.
+Tokens become coins: 1 for every 1,000 tokens Claude writes, plus 100 per level-up and 25 per badge. Your balance sits under the level in the band (`1.2k` past a thousand). Spend them in the shop on things for Clawd to wear.
 
 <img src="docs/levels/shop.svg" alt="A mint-colored Clawd in a party hat and bow tie, with a desk plant beside him" width="100%">
 
