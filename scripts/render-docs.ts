@@ -87,7 +87,7 @@ function banner(): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <rect width="${W}" height="${H}" rx="16" fill="#111"/>
   <g shape-rendering="crispEdges">${dots}</g>
-  <g transform="translate(${W / 2 - 75} 18) scale(5)" shape-rendering="crispEdges">${clawdSvg('happy', false)}</g>
+  <g transform="translate(${W / 2 - 75} 18) scale(5)" shape-rendering="crispEdges">${clawdSvg('happy', 'idle')}</g>
   <text x="${W / 2}" y="198" text-anchor="middle" fill="#fff" style="font: 700 68px ${sans}; letter-spacing: -1.5px">claude-usage-mod</text>
   <text x="${W / 2}" y="246" text-anchor="middle" fill="#bdbdbd" style="font: 400 24px ${sans}">Your Claude Code limits above the prompt, watched over by Clawd</text>
 </svg>
