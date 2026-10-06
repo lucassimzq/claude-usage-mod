@@ -417,16 +417,12 @@ function clawdSvg(
   const flames = (x: number) =>
     `<g>${grid(FLAME_A, COLORS.flameOut, 'r', x, 12, 1.4)}${grid(FLAME_A, COLORS.flameIn, 'y', x, 12, 1.4)}${toggle('1s', true)}</g>` +
     `<g opacity="0">${grid(FLAME_B, COLORS.flameOut, 'r', x, 12, 1.4)}${grid(FLAME_B, COLORS.flameIn, 'y', x, 12, 1.4)}${toggle('1s', false)}</g>`
-  // Over a backdrop, a bubble is filled with its sky so a landmark behind it doesn't show through.
-  const sky = outfit.scene ? SCENES[outfit.scene]?.sky : undefined
-  const backing = (x: number, y: number, w: number, h: number) => (sky ? path(rect(x, y, n2(w), n2(h)), sky) : '')
   // The clock's hand steps round once every four seconds.
   const bx = fx + 2
   const by = -4
   const cp = 1.1
   const clock =
     grid(['#'], MUTED, '#', fx, 6, cp) +
-    backing(bx + cp, by + cp, 9 * cp, 7 * cp) +
     grid(BUBBLE, MUTED, '#', bx, by, cp) +
     grid(CLOCK, COLORS.clock, '#', bx + 2 * cp, by + 1 * cp, cp) +
     HANDS.map(
@@ -438,7 +434,6 @@ function clawdSvg(
   const thought =
     grid(['#'], MUTED, '#', fx - 1, 6, tp) +
     grid(['#'], MUTED, '#', fx + 1, 3, 1.5) +
-    backing(fx + 3 + tp, -5 + tp, 9 * tp, 5 * tp) +
     grid(THOUGHT, MUTED, '#', fx + 3, -5, tp) +
     path(pixels(['', '', '', '...#.#.#'], fx + 3, -5, tp), MUTED, ' opacity="0.4"') +
     THOUGHT_DOTS.map(
@@ -651,8 +646,10 @@ function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width:
     units.push(`<path d="${textPixels(s, width - textWidth(s) - 2, ty)}" fill="${MUTED}"/>`)
   }
   const scene = view?.outfit?.scene
+  // The thought and clock bubbles are open, so the landmarks behind them step aside.
+  const bubble = (doing === 'thinking' && mood !== 'asleep') || mood === 'frantic'
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" shape-rendering="crispEdges">
-  ${scene ? sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, width, left) : ''}${clawdSvg(mood, doing, view?.outfit, view?.burst, true, cluster ? undefined : view?.gain)}
+  ${scene ? `<g opacity="${SCENE_OPACITY}">${sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, width, left, bubble)}</g>` : ''}${clawdSvg(mood, doing, view?.outfit, view?.burst, true, cluster ? undefined : view?.gain)}
   ${cluster?.svg ?? ''}${note?.svg ?? ''}
   ${units.join('\n')}
 </svg>`
@@ -872,6 +869,7 @@ type Layer = { grid: string[]; left?: number; right?: number; up?: number; p?: n
 const SCENE_P = 2
 const SCENE_W = SPRITE_W - 4 // the band's tile, leaving a little air before the level cluster
 const GROUND_Y = 22 // Clawd's feet stand on this line, in the band and in the shop alike
+const SCENE_OPACITY = 0.5 // on the band the scene stays quiet behind the figures; the shop shows it whole
 
 const PINE = ['..#..', '.###.', '..#..', '.###.', '#####', '.###.', '#####', '..t..']
 const PALM = ['.g.g.', 'ggtgg', 'g.t.g', '..t..', '..t..', '...t.', '...t.']
@@ -943,9 +941,10 @@ const SCENES: Record<string, { sky: string; ground: string; layers: Layer[] }> =
  * A backdrop: landmarks in the box at (x, y), `w` × `h`; sky and ground out to `full`.
  * `repeat` layers fill the box and then run on from `from` (where the band's figures start),
  * leaving the level cluster and the note on plain sky. Each is one `<pattern>` tile, so a wide
- * band costs no more than a narrow one.
+ * band costs no more than a narrow one. `hideRight` leaves out the landmarks on the right, where
+ * Clawd's thought and clock bubbles go.
  */
-function sceneSvg(id: string, x: number, y: number, w: number, h: number, full = w, from = x + w): string {
+function sceneSvg(id: string, x: number, y: number, w: number, h: number, full = w, from = x + w, hideRight = false): string {
   const s = SCENES[id]
   if (!s) return ''
   // Ids carry the geometry, so two different boxes in one document never share a clip or tile.
@@ -959,6 +958,7 @@ function sceneSvg(id: string, x: number, y: number, w: number, h: number, full =
       Object.entries(l.colors)
         .map(([ch, fill]) => `<path d="${pixels(l.grid, ox, oy, p, ch)}" fill="${fill}"/>`)
         .join('')
+    if (!l.repeat && hideRight && l.right !== undefined) return ''
     if (!l.repeat) return paint(l.right === undefined ? x + (l.left ?? 0) * SCENE_P : x + w - l.right * SCENE_P - cols * p, ly)
     const tile = `${key}-${i}`
     const th = l.grid.length * p
