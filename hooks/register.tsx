@@ -417,12 +417,16 @@ function clawdSvg(
   const flames = (x: number) =>
     `<g>${grid(FLAME_A, COLORS.flameOut, 'r', x, 12, 1.4)}${grid(FLAME_A, COLORS.flameIn, 'y', x, 12, 1.4)}${toggle('1s', true)}</g>` +
     `<g opacity="0">${grid(FLAME_B, COLORS.flameOut, 'r', x, 12, 1.4)}${grid(FLAME_B, COLORS.flameIn, 'y', x, 12, 1.4)}${toggle('1s', false)}</g>`
+  // Over a backdrop, a bubble is filled with its sky so a landmark behind it doesn't show through.
+  const sky = outfit.scene ? SCENES[outfit.scene]?.sky : undefined
+  const backing = (x: number, y: number, w: number, h: number) => (sky ? path(rect(x, y, n2(w), n2(h)), sky) : '')
   // The clock's hand steps round once every four seconds.
   const bx = fx + 2
   const by = -4
   const cp = 1.1
   const clock =
     grid(['#'], MUTED, '#', fx, 6, cp) +
+    backing(bx + cp, by + cp, 9 * cp, 7 * cp) +
     grid(BUBBLE, MUTED, '#', bx, by, cp) +
     grid(CLOCK, COLORS.clock, '#', bx + 2 * cp, by + 1 * cp, cp) +
     HANDS.map(
@@ -434,6 +438,7 @@ function clawdSvg(
   const thought =
     grid(['#'], MUTED, '#', fx - 1, 6, tp) +
     grid(['#'], MUTED, '#', fx + 1, 3, 1.5) +
+    backing(fx + 3 + tp, -5 + tp, 9 * tp, 5 * tp) +
     grid(THOUGHT, MUTED, '#', fx + 3, -5, tp) +
     path(pixels(['', '', '', '...#.#.#'], fx + 3, -5, tp), MUTED, ' opacity="0.4"') +
     THOUGHT_DOTS.map(
@@ -647,7 +652,7 @@ function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width:
   }
   const scene = view?.outfit?.scene
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" shape-rendering="crispEdges">
-  ${scene ? sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, width) : ''}${clawdSvg(mood, doing, view?.outfit, view?.burst, true, cluster ? undefined : view?.gain)}
+  ${scene ? sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, width, left) : ''}${clawdSvg(mood, doing, view?.outfit, view?.burst, true, cluster ? undefined : view?.gain)}
   ${cluster?.svg ?? ''}${note?.svg ?? ''}
   ${units.join('\n')}
 </svg>`
@@ -677,6 +682,7 @@ const LEVELS: { at: number; title: string; item?: string }[] = [
 
 type Slot = 'head' | 'face' | 'neck' | 'back' | 'shell' | 'buddy' | 'scene'
 const SLOTS: Slot[] = ['head', 'face', 'neck', 'back', 'shell', 'buddy', 'scene']
+const SLOT_NAMES: Record<Slot, string> = { head: 'Head', face: 'Face', neck: 'Neck', back: 'Back', shell: 'Shell', buddy: 'Buddy', scene: 'Backdrop' }
 
 // Everything Clawd can wear: level unlocks (no price) and the shop, cheapest first.
 // `level` on a shop item is the level it needs before it can be bought.
@@ -861,7 +867,7 @@ const grid4 = (g: string[], fill: string, ch: string, x: number, y: number) =>
 // so one scene fits both the band's tile and the shop's card.
 // Clawd covers the middle, so the things worth seeing sit at the edges and above his head.
 // `repeat` layers tile along the whole band behind the figures, so they stay low and dim:
-// below the bars (y ≥ 16) or in the top few pixels, never behind the text.
+// below the bars (y ≥ 16) or in the top few pixels, and they skip the level cluster and the note.
 type Layer = { grid: string[]; left?: number; right?: number; up?: number; p?: number; repeat?: boolean; colors: Record<string, string> }
 const SCENE_P = 2
 const SCENE_W = SPRITE_W - 4 // the band's tile, leaving a little air before the level cluster
@@ -933,23 +939,35 @@ const SCENES: Record<string, { sky: string; ground: string; layers: Layer[] }> =
   },
 }
 
-/** A backdrop: landmarks in the box at (x, y), `w` × `h`; sky, ground and `repeat` layers out to `full`. */
-function sceneSvg(id: string, x: number, y: number, w: number, h: number, full = w): string {
+/**
+ * A backdrop: landmarks in the box at (x, y), `w` × `h`; sky and ground out to `full`.
+ * `repeat` layers fill the box and then run on from `from` (where the band's figures start),
+ * leaving the level cluster and the note on plain sky. Each is one `<pattern>` tile, so a wide
+ * band costs no more than a narrow one.
+ */
+function sceneSvg(id: string, x: number, y: number, w: number, h: number, full = w, from = x + w): string {
   const s = SCENES[id]
   if (!s) return ''
-  const clip = `scene-${id}-${n2(full)}`
-  const layers = s.layers.map(l => {
+  // Ids carry the geometry, so two different boxes in one document never share a clip or tile.
+  const key = `scene-${id}-${[x, y, w, h, full, from].map(Math.round).join('-')}`.replace(/-(?=-)/g, '-m')
+  const defs: string[] = [`<clipPath id="${key}"><rect x="${x}" y="${y}" width="${full}" height="${h}" rx="3"/></clipPath>`]
+  const layers = s.layers.map((l, i) => {
     const p = l.p ?? SCENE_P
     const cols = Math.max(...l.grid.map(r => r.length))
-    const lx = l.right === undefined ? x + (l.left ?? 0) * SCENE_P : x + w - l.right * SCENE_P - cols * p
     const ly = GROUND_Y - (l.up ?? 0) * SCENE_P - l.grid.length * p
-    const xs = l.repeat ? Array.from({ length: Math.ceil(full / (cols * p)) }, (_, k) => x + k * cols * p) : [lx]
-    return Object.entries(l.colors)
-      .map(([ch, fill]) => `<path d="${xs.map(at => pixels(l.grid, at, ly, p, ch)).join('')}" fill="${fill}"/>`)
-      .join('')
+    const paint = (ox: number, oy: number) =>
+      Object.entries(l.colors)
+        .map(([ch, fill]) => `<path d="${pixels(l.grid, ox, oy, p, ch)}" fill="${fill}"/>`)
+        .join('')
+    if (!l.repeat) return paint(l.right === undefined ? x + (l.left ?? 0) * SCENE_P : x + w - l.right * SCENE_P - cols * p, ly)
+    const tile = `${key}-${i}`
+    const th = l.grid.length * p
+    defs.push(`<pattern id="${tile}" x="${x}" y="${ly}" width="${cols * p}" height="${th}" patternUnits="userSpaceOnUse">${paint(0, 0)}</pattern>`)
+    const run = (a: number, b: number) => (b > a ? `<rect x="${n2(a)}" y="${ly}" width="${n2(b - a)}" height="${th}" fill="url(#${tile})"/>` : '')
+    return from <= x + w ? run(x, x + full) : run(x, x + w) + run(from, x + full)
   })
-  return `<clipPath id="${clip}"><rect x="${x}" y="${y}" width="${full}" height="${h}" rx="3"/></clipPath>
-  <g clip-path="url(#${clip})"><rect x="${x}" y="${y}" width="${full}" height="${h}" fill="${s.sky}"/><rect x="${x}" y="${GROUND_Y}" width="${full}" height="${y + h - GROUND_Y}" fill="${s.ground}"/>${layers.join('')}</g>`
+  return `<defs>${defs.join('')}</defs>
+  <g clip-path="url(#${key})"><rect x="${x}" y="${y}" width="${full}" height="${h}" fill="${s.sky}"/><rect x="${x}" y="${GROUND_Y}" width="${full}" height="${y + h - GROUND_Y}" fill="${s.ground}"/>${layers.join('')}</g>`
 }
 
 /** Clawd alone in an outfit, for the shop: `scale` screen pixels per unit. */
@@ -1166,7 +1184,7 @@ function statsOf(p: Progress, now: number): string {
   const level = levelOf(p.xp)
   const xp = Math.floor(p.xp)
   const outfit = outfitOf(p, level)
-  const worn = SLOTS.flatMap(slot => (outfit[slot] ? [nameOf(outfit[slot])] : []))
+  const worn = SLOTS.flatMap(slot => (outfit[slot] ? [called(outfit[slot])] : []))
   const all = Object.entries(BADGES)
   const earned = all.filter(([id]) => p.badges[id]).map(([, b]) => b.name)
   const left = all.filter(([id]) => !p.badges[id]).map(([, b]) => `${b.name} (${b.how})`)
@@ -1208,7 +1226,7 @@ function shopOf(p: Progress): string {
       .join(' · ')
   return [
     `Shop · you have ${p.coins.toLocaleString('en-US')} coins (1 per ${COINS.perTokens.toLocaleString('en-US')} tokens Claude writes, ${COINS.level} per level-up, ${COINS.badge} per badge)`,
-    ...SLOTS.map(slot => `${slot[0]?.toUpperCase()}${slot.slice(1)}: ${line(slot)}`),
+    ...SLOTS.map(slot => `${SLOT_NAMES[slot]}: ${line(slot)}`),
     `/usage-hud buy <item> to buy · wear <item> or remove <item> to change outfits · wear none to take it all off`,
   ].join('\n')
 }
@@ -1240,10 +1258,11 @@ function dressed(prev: Progress, arg: string): Step {
   const id = itemNamed(arg)
   const item = id ? ITEMS[id] : undefined
   if (id === 'none') {
-    for (const slot of SLOTS) p.outfit[slot] = 'none'
+    // Clothes only: the backdrop stays up until its own card takes it down.
+    for (const slot of SLOTS) if (slot !== 'scene') p.outfit[slot] = 'none'
     step.reply = 'Clawd took everything off.'
   } else if (!id || !item) {
-    const mine = Object.keys(ITEMS).filter(i => owns(p, level, i)).map(nameOf)
+    const mine = Object.keys(ITEMS).filter(i => owns(p, level, i)).map(called)
     step.reply = `Clawd can wear: ${mine.join(', ') || 'nothing yet'}. /usage-hud shop has more.`
   } else if (!owns(p, level, id)) {
     step.reply = item.price
@@ -1259,7 +1278,7 @@ function dressed(prev: Progress, arg: string): Step {
 function undressed(prev: Progress, arg: string): Step {
   const step = stepFrom(prev)
   const p = step.p
-  const said = arg.trim().toLowerCase()
+  const said = arg.trim().toLowerCase().replace(/^the\s+/, '')
   const want = said === 'backdrop' ? 'scene' : said
   const id = itemNamed(want)
   const slot = SLOTS.find(s => s === want) ?? (id && id !== 'none' ? ITEMS[id]?.slot : undefined)
@@ -1512,7 +1531,6 @@ let doing: Activity = 'idle'
 
 const SHOP = 'shop'
 const SHOP_WIDE = 420 // px: below this the shop's header stacks under Clawd
-const SLOT_NAMES: Record<Slot, string> = { head: 'Head', face: 'Face', neck: 'Neck', back: 'Back', shell: 'Shell', buddy: 'Buddy', scene: 'Backdrop' }
 
 // Opens the shop pane where the person asked for it; the text list stands in where it can't be drawn.
 async function openShop($: EngineInterface): Promise<string> {
@@ -1640,7 +1658,7 @@ export const register: Register = on => {
     // The focus starts on the first thing Clawd has, reading the slots top to bottom.
     const first = SLOTS.flatMap(slot => shelf.filter(s => s.slot === slot)).find(s => s.state === 'wearing' || s.state === 'owned')?.id
     const coins = `${p.coins.toLocaleString('en-US')} coins`
-    const wearing = SLOTS.flatMap(slot => (worn[slot] ? [nameOf(worn[slot])] : []))
+    const wearing = SLOTS.flatMap(slot => (worn[slot] ? [called(worn[slot])] : []))
 
     if (e.surface === 'terminal') {
       const { Box, Button, Text } = $.ui.resolve(e)
@@ -1657,7 +1675,7 @@ export const register: Register = on => {
           </Text>
           {SLOTS.map(slot => (
             <Box key={slot} flexDirection="row" gap={1}>
-              <Box width={6} flexShrink={0}>
+              <Box width={8} flexShrink={0}>
                 <Text dimColor>{SLOT_NAMES[slot]}</Text>
               </Box>
               <Box flexDirection="row" flexWrap="wrap" columnGap={1} flexShrink={1}>
@@ -1677,6 +1695,11 @@ export const register: Register = on => {
                       <Text key={`item:${s.id}`} dimColor>{` ${label(s)} `}</Text>
                     )
                   })}
+                {slot === 'scene' ? (
+                  <Text key="scene-note" dimColor>
+                    (drawn in the desktop app, VS Code and mobile, not here)
+                  </Text>
+                ) : null}
               </Box>
             </Box>
           ))}
@@ -1724,7 +1747,7 @@ export const register: Register = on => {
                       borderColor={s.state === 'wearing' ? CLAWD : undefined}
                       borderDimColor={s.state !== 'wearing'}
                     >
-                      <Svg source={wardrobeSvg({ ...worn, [slot]: s.id }, 2.5)} alt={`Clawd in the ${s.name}`} width={110} height={70} />
+                      <Svg source={wardrobeSvg({ ...worn, [slot]: s.id }, 2.5)} alt={`Clawd in the ${called(s.id)}`} width={110} height={70} />
                       <Text dimColor={!change}>{s.name}</Text>
                       {change ? (
                         <Button

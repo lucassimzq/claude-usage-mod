@@ -83,6 +83,9 @@ test('a backdrop is bought like an item and drawn behind the crab on the band', 
   expect(svg.props.source).toMatch(/<rect x="0" y="0" width="9\d\d" height="24" fill="#1b1d2b"/) // across the whole band
   await band.unmount()
 
-  expect(await run($, 'remove backdrop')).toBe('Took off the space backdrop.')
+  expect(await run($, 'wear none')).toBe('Clawd took everything off.')
+  expect(await run($, 'stats')).toMatch(/wearing: space backdrop/) // the backdrop isn't clothing
+  expect(await run($, 'shop list')).toMatch(/\nBackdrop: forest 300 · /)
+  expect(await run($, 'remove the backdrop')).toBe('Took off the space backdrop.')
   expect(await run($, 'wear space')).toBe("Clawd's backdrop is now space.")
 })
