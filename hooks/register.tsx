@@ -607,7 +607,9 @@ function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width:
     const s = `$${usd.toFixed(2)}`
     units.push(`<path d="${textPixels(s, width - textWidth(s) - 2, ty)}" fill="${MUTED}"/>`)
   }
+  const scene = view?.outfit?.scene
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" shape-rendering="crispEdges">
+  ${scene ? sceneSvg(scene, 0, 0, SCENE_W, HEIGHT) : ''}
   ${clawdSvg(mood, doing, view?.outfit, view?.burst)}
   ${cluster?.svg ?? ''}${note?.svg ?? ''}
   ${units.join('\n')}
@@ -636,8 +638,8 @@ const LEVELS: { at: number; title: string; item?: string }[] = [
   { at: 50, title: 'Legend', item: 'golden' },
 ]
 
-type Slot = 'head' | 'face' | 'neck' | 'back' | 'shell' | 'buddy'
-const SLOTS: Slot[] = ['head', 'face', 'neck', 'back', 'shell', 'buddy']
+type Slot = 'head' | 'face' | 'neck' | 'back' | 'shell' | 'buddy' | 'scene'
+const SLOTS: Slot[] = ['head', 'face', 'neck', 'back', 'shell', 'buddy', 'scene']
 
 // Everything Clawd can wear: level unlocks (no price) and the shop, cheapest first.
 // `level` on a shop item is the level it needs before it can be bought.
@@ -660,15 +662,23 @@ const ITEMS: Record<string, { name: string; slot: Slot; price?: number; level?: 
   lilac: { name: 'lilac shell', slot: 'shell', price: 250 },
   rose: { name: 'rose shell', slot: 'shell', price: 250 },
   monocle: { name: 'monocle', slot: 'face', price: 300 },
+  forest: { name: 'forest', slot: 'scene', price: 300 },
+  beach: { name: 'beach', slot: 'scene', price: 300 },
+  city: { name: 'city at night', slot: 'scene', price: 400 },
   medal: { name: 'medal', slot: 'neck', price: 500, level: 10 },
   midnight: { name: 'midnight shell', slot: 'shell', price: 600 },
+  australia: { name: 'Australia', slot: 'scene', price: 600 },
+  malaysia: { name: 'Malaysia', slot: 'scene', price: 600 },
   crab: { name: 'tiny crab', slot: 'buddy', price: 800, level: 5 },
+  space: { name: 'space', slot: 'scene', price: 1000, level: 10 },
   halo: { name: 'halo', slot: 'head', price: 1200, level: 15 },
   wings: { name: 'wings', slot: 'back', price: 1500, level: 25 },
   crown: { name: 'crown', slot: 'head', price: 2000, level: 20 },
 }
 
 const nameOf = (id: string) => ITEMS[id]?.name ?? id
+/** An item's name in a sentence: `the forest backdrop` reads better than `the forest`. */
+const called = (id: string) => (ITEMS[id]?.slot === 'scene' ? `${nameOf(id)} backdrop` : nameOf(id))
 
 const reached = (level: number) => LEVELS.filter(m => m.at <= level)
 const titleOf = (level: number) => reached(level).at(-1)?.title ?? 'Hatchling'
@@ -773,11 +783,102 @@ function gameSvg(v: GameView, x: number, fit: Exclude<GameFit, 'none'>): { svg: 
 const grid4 = (g: string[], fill: string, ch: string, x: number, y: number) =>
   `<path d="${pixels(g, x, y, 1.4, ch)}" fill="${fill}"/>`
 
+// Backdrops: a small flat scene behind Clawd, bought in the shop. Each layer is a pixel grid
+// standing on the ground (or `up` cells above it), `left` or `right` cells in from that edge,
+// so one scene fits both the band's tile and the shop's card.
+// Clawd covers the middle, so the things worth seeing sit at the edges and above his head.
+type Layer = { grid: string[]; left?: number; right?: number; up?: number; p?: number; colors: Record<string, string> }
+const SCENE_P = 2
+const SCENE_W = SPRITE_W - 4 // the band's tile, leaving a little air before the level cluster
+const GROUND_Y = 22 // Clawd's feet stand on this line, in the band and in the shop alike
+
+const PINE = ['..#..', '.###.', '..#..', '.###.', '#####', '.###.', '#####', '..t..']
+const PALM = ['.g.g.', 'ggtgg', 'g.t.g', '..t..', '..t..', '...t.', '...t.']
+const SCENES: Record<string, { sky: string; ground: string; layers: Layer[] }> = {
+  forest: {
+    sky: '#2f423b',
+    ground: '#26352d',
+    layers: [
+      { grid: ['......####........######..', '...##########...##########', '##########################'], colors: { '#': '#364c43' } },
+      { grid: ['y.......', '.....y..', '........', '..y.....'], right: 1, up: 6, p: 1.5, colors: { y: '#c9bd6a' } },
+      { grid: PINE, colors: { '#': '#4e705d', t: '#5c4636' } },
+      { grid: PINE.slice(2), right: 5, colors: { '#': '#4e705d', t: '#5c4636' } },
+      { grid: PINE, right: 1, colors: { '#': '#45664f', t: '#5c4636' } },
+    ],
+  },
+  beach: {
+    sky: '#3d5a6c',
+    ground: '#b59d78',
+    layers: [
+      { grid: ['.##.', '####', '####', '.##.'], right: 2, up: 6, colors: { '#': '#d9b25a' } },
+      { grid: ['..w......w......w......w..', '##########################'], colors: { '#': '#2f4b5c', w: '#5f8099' } },
+      { grid: PALM, colors: { g: '#5f8f6a', t: '#7a5a3c' } },
+      { grid: ['..rwr..', '.rwrwr.', 'rwrwrwr', '...p...', '...p...', '...p...'], right: 1, colors: { r: '#c06565', w: '#e2ddd2', p: '#8b9099' } },
+    ],
+  },
+  city: {
+    sky: '#232a3d',
+    ground: '#2b3142',
+    layers: [
+      { grid: ['.##', '#..', '#..', '.##'], right: 2, up: 7, colors: { '#': '#d8d0c4' } },
+      { grid: ['..........##....#.........', '......#...##...###........', '.....###..##...###...##...', '.....###..##.#.###...##...'], colors: { '#': '#2e364d' } },
+      { grid: ['##....', 'w#....', '##.###', '#w.#w#', 'w#.###', '##.w##', '#w.###'], colors: { '#': '#3c4560', w: '#c4a05a' } },
+      { grid: ['..####..', '..#w##.#', '#.####.#', '#.##w#ww', 'w.####.#', '#.#w##w#'], right: 0, colors: { '#': '#3c4560', w: '#c4a05a' } },
+    ],
+  },
+  australia: {
+    sky: '#4c3f55',
+    ground: '#7a4a35',
+    layers: [
+      { grid: ['.###.', '#####', '#####', '#####'], right: 1, up: 3, colors: { '#': '#d9a066' } },
+      { grid: ['....####..', '..###d###.', '.##d####d#', '####d#####'], right: 0, colors: { '#': '#a8573a', d: '#8e4630' } },
+      { grid: ['.#..', '##..', '.##.', '.###', '..##', '.#.#'], colors: { '#': '#2a2026' } },
+    ],
+  },
+  malaysia: {
+    sky: '#2c3550',
+    ground: '#2a3b33',
+    layers: [
+      { grid: ['.##.#', '#....', '#....', '.##..'], up: 7, colors: { '#': '#d9c06a' } },
+      { grid: ['.#...#.', '.#...#.', '###.###', '#w#.#w#', '#######', '###.###', '#w#.#w#', '###.###', '#w#.#w#', '###.###'], right: 1, colors: { '#': '#9aa6b8', w: '#d9c06a' } },
+      { grid: PALM, colors: { g: '#4f7a5a', t: '#7a5a3c' } },
+    ],
+  },
+  space: {
+    sky: '#1b1d2b',
+    ground: '#3e4152',
+    layers: [
+      { grid: ['.......#..........#.....................#..........', '..#.................................#...........#.', '..........#.................#......................', '#..........................................#.......', '.....#..........#..........................#.....#.', '...................................................', '.#.................#.......................#.......', '..........#........................................'], up: 4, p: 1, colors: { '#': '#c8c8d8' } },
+      { grid: ['..pppp..', '.pppppp.', 'rrrrrrrr', '.pppppp.', '..pppp..'], right: 1, up: 5, colors: { p: '#8f7fc9', r: '#c4a05a' } },
+      { grid: ['..cc.......cc......cc....cc..'], up: -1, colors: { c: '#33364a' } },
+    ],
+  },
+}
+
+/** A backdrop filling the box at (x, y), `w` × `h`, its ground at `GROUND_Y`. */
+function sceneSvg(id: string, x: number, y: number, w: number, h: number): string {
+  const s = SCENES[id]
+  if (!s) return ''
+  const clip = `scene-${id}-${w}`
+  const layers = s.layers.map(l => {
+    const p = l.p ?? SCENE_P
+    const cols = Math.max(...l.grid.map(r => r.length))
+    const lx = l.right === undefined ? x + (l.left ?? 0) * SCENE_P : x + w - l.right * SCENE_P - cols * p
+    const ly = GROUND_Y - (l.up ?? 0) * SCENE_P - l.grid.length * p
+    return Object.entries(l.colors)
+      .map(([ch, fill]) => `<path d="${pixels(l.grid, lx, ly, p, ch)}" fill="${fill}"/>`)
+      .join('')
+  })
+  return `<clipPath id="${clip}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3"/></clipPath>
+  <g clip-path="url(#${clip})"><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${s.sky}"/><rect x="${x}" y="${GROUND_Y}" width="${w}" height="${y + h - GROUND_Y}" fill="${s.ground}"/>${layers.join('')}</g>`
+}
+
 /** Clawd alone in an outfit, for the shop: `scale` screen pixels per unit. */
 function wardrobeSvg(outfit: Record<string, string>, scale: number): string {
   const w = 44
   const h = 28
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w * scale}" height="${h * scale}" viewBox="-2 -2 ${w} ${h}" shape-rendering="crispEdges">
+  ${outfit.scene ? sceneSvg(outfit.scene, -2, -2, w, h) : ''}
   ${clawdSvg('happy', 'idle', outfit, false, false)}
 </svg>`
 }
@@ -1009,7 +1110,7 @@ function statsOf(p: Progress, now: number): string {
 function itemNamed(arg: string): string | undefined {
   const want = arg.trim().toLowerCase().replace(/^the\s+/, '')
   if (want === 'none' || want === 'nothing' || want === 'all' || want === 'everything') return 'none'
-  return Object.keys(ITEMS).find(id => id === want || ITEMS[id]?.name === want)
+  return Object.keys(ITEMS).find(id => id === want || ITEMS[id]?.name.toLowerCase() === want)
 }
 
 const unlockLevel = (id: string) => LEVELS.find(m => m.item === id)?.at
@@ -1040,15 +1141,15 @@ function bought(prev: Progress, arg: string): Step {
   const id = itemNamed(arg)
   const item = id ? ITEMS[id] : undefined
   if (!id || !item) step.reply = `There's no "${arg}" in the shop. /usage-hud shop lists everything.`
-  else if (!item.price) step.reply = `The ${item.name} isn't for sale: it comes free at level ${unlockLevel(id)}.`
-  else if (owns(p, level, id)) step.reply = `You already have the ${item.name}. /usage-hud wear ${id} puts it on.`
-  else if (item.level && level < item.level) step.reply = `The ${item.name} needs level ${item.level}, and Clawd is level ${level}.`
-  else if (p.coins < item.price) step.reply = `The ${item.name} costs ${item.price.toLocaleString('en-US')} coins and you have ${p.coins.toLocaleString('en-US')}.`
+  else if (!item.price) step.reply = `The ${called(id)} isn't for sale: it comes free at level ${unlockLevel(id)}.`
+  else if (owns(p, level, id)) step.reply = `You already have the ${called(id)}. /usage-hud wear ${id} puts it on.`
+  else if (item.level && level < item.level) step.reply = `The ${called(id)} needs level ${item.level}, and Clawd is level ${level}.`
+  else if (p.coins < item.price) step.reply = `The ${called(id)} costs ${item.price.toLocaleString('en-US')} coins and you have ${p.coins.toLocaleString('en-US')}.`
   else {
     p.coins -= item.price
     p.owned.push(id)
     p.outfit[item.slot] = id
-    step.reply = `Bought the ${item.name} for ${item.price.toLocaleString('en-US')} coins, and Clawd's wearing it. ${p.coins.toLocaleString('en-US')} coins left.`
+    step.reply = `Bought the ${called(id)} for ${item.price.toLocaleString('en-US')} coins, and ${item.slot === 'scene' ? "it's up behind Clawd" : "Clawd's wearing it"}. ${p.coins.toLocaleString('en-US')} coins left.`
   }
   return step
 }
@@ -1067,11 +1168,11 @@ function dressed(prev: Progress, arg: string): Step {
     step.reply = `Clawd can wear: ${mine.join(', ') || 'nothing yet'}. /usage-hud shop has more.`
   } else if (!owns(p, level, id)) {
     step.reply = item.price
-      ? `Clawd doesn't have the ${item.name} yet: it's ${item.price.toLocaleString('en-US')} coins in /usage-hud shop.`
-      : `The ${item.name} unlocks at level ${unlockLevel(id)}.`
+      ? `Clawd doesn't have the ${called(id)} yet: it's ${item.price.toLocaleString('en-US')} coins in /usage-hud shop.`
+      : `The ${called(id)} unlocks at level ${unlockLevel(id)}.`
   } else {
     p.outfit[item.slot] = id
-    step.reply = `Clawd is wearing the ${item.name}.`
+    step.reply = item.slot === 'scene' ? `Clawd's backdrop is now ${item.name}.` : `Clawd is wearing the ${item.name}.`
   }
   return step
 }
@@ -1079,7 +1180,8 @@ function dressed(prev: Progress, arg: string): Step {
 function undressed(prev: Progress, arg: string): Step {
   const step = stepFrom(prev)
   const p = step.p
-  const want = arg.trim().toLowerCase()
+  const said = arg.trim().toLowerCase()
+  const want = said === 'backdrop' ? 'scene' : said
   const id = itemNamed(want)
   const slot = SLOTS.find(s => s === want) ?? (id && id !== 'none' ? ITEMS[id]?.slot : undefined)
   const on = slot ? outfitOf(p, levelOf(p.xp))[slot] : undefined
@@ -1087,7 +1189,7 @@ function undressed(prev: Progress, arg: string): Step {
     step.reply = `Clawd isn't wearing that. /usage-hud stats shows what he has on.`
   } else {
     p.outfit[slot] = 'none'
-    step.reply = `Took off the ${nameOf(on)}.`
+    step.reply = `Took off the ${called(on)}.`
   }
   return step
 }
@@ -1310,7 +1412,7 @@ let doing: Activity = 'idle'
 
 const SHOP = 'shop'
 const SHOP_WIDE = 420 // px: below this the shop's header stacks under Clawd
-const SLOT_NAMES: Record<Slot, string> = { head: 'Head', face: 'Face', neck: 'Neck', back: 'Back', shell: 'Shell', buddy: 'Buddy' }
+const SLOT_NAMES: Record<Slot, string> = { head: 'Head', face: 'Face', neck: 'Neck', back: 'Back', shell: 'Shell', buddy: 'Buddy', scene: 'Backdrop' }
 
 // Opens the shop pane where the person asked for it; the text list stands in where it can't be drawn.
 async function openShop($: EngineInterface): Promise<string> {

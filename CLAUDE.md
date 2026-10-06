@@ -49,6 +49,7 @@ The update check compares `plugin.json`'s `version` with git tags, so a release 
 - Coins: 1 per 1,000 written tokens (the remainder carries in `coinTokens`), 100 per level-up (added in `play()`), 25 per badge. Cache tokens don't count, or prices would spiral.
 - `ITEMS` is the one catalog: level unlocks have no `price`. Each item has a slot; `outfitOf()` fills every slot with its newest level unlock unless `outfit` picks an owned item or `none`. Buddies sit left of Clawd and step aside for the panic flames.
 - Shop commands (`bought`, `dressed`, `undressed`) run inside `play()` so a purchase can't race a turn's write.
+- Backdrops are items in the `scene` slot (shown as "Backdrop"). `SCENES` holds each one as a sky, a ground and pixel-grid layers pinned to the left or right edge, so `sceneSvg()` fills both the band's tile (`SCENE_W` × 24, behind Clawd) and the shop card. Clawd covers the middle, so the landmarks sit at the edges and above his head. They draw on remote surfaces only; the terminal band shows none.
 
 ## Mood thresholds
 
