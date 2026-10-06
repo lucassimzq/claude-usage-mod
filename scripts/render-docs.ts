@@ -3,7 +3,7 @@
 //
 //   node scripts/render-docs.ts
 //
-// Needs a Node that strips TypeScript types by itself (23.6 or later).
+// Needs a Node that strips TypeScript types by itself (23.6 or later), or `--experimental-strip-types` on 22.
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,8 +18,8 @@ if (start < 0 || end < 0) throw new Error('hooks/register.tsx has lost its #regi
 
 // The region is plain TypeScript with no engine calls: load it as a module of its own.
 const tmp = join(tmpdir(), `usage-hud-drawing-${process.pid}.ts`)
-writeFileSync(tmp, `${source.slice(start, end)}\nexport { clawdSvg, pixelSvg, tanksOf }\n`)
-const { clawdSvg, pixelSvg, tanksOf } = await import(tmp)
+writeFileSync(tmp, `${source.slice(start, end)}\nexport { cardSvg, clawdSvg, pixelSvg, tanksOf }\n`)
+const { cardSvg, clawdSvg, pixelSvg, tanksOf } = await import(tmp)
 rmSync(tmp)
 
 const NOW = Date.parse('2026-10-04T12:00:00Z')
@@ -120,4 +120,21 @@ mkdirSync(join(root, 'docs/levels'), { recursive: true })
 for (const [name, view] of Object.entries(levels)) {
   writeFileSync(join(root, `docs/levels/${name}.svg`), card(snapshot(18, 27, 40), view))
 }
-console.log(`wrote docs/banner.svg, ${Object.keys(states).length} state cards and ${Object.keys(levels).length} level cards`)
+// The week's share card, as Save card writes it.
+const week = {
+  start: '2026-09-28',
+  turns: 212,
+  tokensOut: 218_000,
+  xp: 1840,
+  levelFrom: 14,
+  levelTo: 15,
+  coinsEarned: 380,
+  coinsSpent: 150,
+  scored: 5,
+  paced: 4,
+  streak: 41,
+  days: 6,
+  badges: ['perfect-pace', 'on-a-roll', 'zen'],
+}
+writeFileSync(join(root, 'docs/card.svg'), cardSvg(week, { head: 'hardhat', face: 'sunglasses', neck: 'scarf' }, 2))
+console.log(`wrote docs/banner.svg, docs/card.svg, ${Object.keys(states).length} state cards and ${Object.keys(levels).length} level cards`)

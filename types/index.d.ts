@@ -34,8 +34,10 @@ export type Progress = {
   streak: { count: number; best: number; lastDay?: string; restDays: number }
   /** Badge id to the day it was earned. */
   badges: Record<string, string>
-  /** Turns finished today, for the daily cap on turn XP. */
-  today: { day: string; turns: number }
+  /** Today's counters: the daily cap on turn XP, and what the quests measure. */
+  today: Today
+  /** Web searches and fetches, lifetime, for Scholar. */
+  searches: number
   /** Keyed by limit kind (`five_hour`, `seven_day`). */
   windows: Record<string, Window>
   /** Well-paced 5-hour windows in a row, for Perfect Pace. */
@@ -51,6 +53,69 @@ export type Progress = {
   /** What Clawd wears in each slot (`head`, `face`, `neck`, `back`, `shell`, `buddy`), or `none`.
    * A slot left out wears the newest level unlock for it. */
   outfit: Record<string, string>
+  /** The week under way, from its first change; absent until the game has seen one. */
+  week?: Week
+  /** The last finished week, for the recap and the share card. */
+  recap?: Recap
+  /** The `start` of the last recap the person has closed, so the band stops offering it. */
+  recapSeen?: string
+  /** Quests done, `day:id` (daily) or `w<monday>:id` (weekly) to the day they were done. */
+  quests: Record<string, string>
+}
+
+/** Today's counters, local date `YYYY-MM-DD`. */
+export type Today = {
+  day: string
+  turns: number
+  tokensOut: number
+  toolCalls: number
+  /** Distinct tools used today, by name. */
+  tools: string[]
+  searches: number
+  /** Context windows cleared today while under 60%. */
+  clears: number
+  /** 5-hour windows that ended today having peaked at 40–70%. */
+  steady: number
+}
+
+/**
+ * The calendar week under way (Monday to Sunday, local). `xp`, `coins`, `turns` and
+ * `tokensOut` are the totals when it began, so the week's own figures are differences.
+ */
+export type Week = {
+  /** The week's Monday, `YYYY-MM-DD`. */
+  start: string
+  xp: number
+  coins: number
+  turns: number
+  tokensOut: number
+  /** Coins spent in the shop this week. */
+  spent: number
+  /** 5-hour windows scored this week, and how many were well paced. */
+  scored: number
+  paced: number
+  /** The longest the streak got this week. */
+  streak: number
+  /** Days with a turn this week. */
+  days: number
+}
+
+/** A finished week, as the recap and the share card show it. */
+export type Recap = {
+  start: string
+  turns: number
+  tokensOut: number
+  xp: number
+  levelFrom: number
+  levelTo: number
+  coinsEarned: number
+  coinsSpent: number
+  scored: number
+  paced: number
+  streak: number
+  days: number
+  /** Badge ids earned that week. */
+  badges: string[]
 }
 
 /** `burst` is true for a moment after a level-up, while the sparkle plays. */
