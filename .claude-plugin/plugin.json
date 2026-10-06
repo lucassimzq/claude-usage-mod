@@ -1,6 +1,6 @@
 {
   "name": "usage-hud",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "A pixel Clawd above your prompt whose mood follows your context, session and weekly usage",
   "author": {
     "name": "lucassimzq"
