@@ -2,9 +2,15 @@ export type Limit = {
   kind: string
   pct: number
   resetsAt?: string
-  /** Carried over from an earlier session: no response has reported this window yet. */
+  /** No session has reported this window since this one started, so it may be out of date. */
   isSaved?: boolean
 }
+
+/**
+ * One plan limit as the last session to hear of it saw it, kept in `$.store` under
+ * `readings` so every session shows the same figures. `seenAt` is when it was heard.
+ */
+export type Reading = { kind: string; pct: number; resetsAt?: string; seenAt: number }
 
 export type Snapshot = {
   ctxPct: number

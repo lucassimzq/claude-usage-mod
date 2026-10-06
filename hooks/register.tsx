@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Activity, Game, Gain, Gauges, Limit, Progress, Snapshot, Update } from '../types'
+import type { Activity, Game, Gain, Gauges, Limit, Progress, Reading, Snapshot, Update } from '../types'
 
 const gauges = atom({ plugin: 'usage-hud', key: 'gauges' } as const, { cur: null, prev: null })
 const isHidden = atom({ plugin: 'usage-hud', key: 'isHidden' } as const, false)
@@ -1343,25 +1343,83 @@ function bar(pct: number, cells = 5): string {
 
 let settle: { cancel: () => void } | undefined
 
-const SAVED = 'limits'
+const READINGS = 'readings' // the plan limits as the last session to hear of each saw it
+const SAVED = 'limits' // what earlier versions kept: the last limits, with no time
+const SAME_WINDOW_MS = 30 * 60_000 // reset times this close are one window
+const SYNC_MS = 10_000
 
-// The limits arrive with API responses, so a new session has none until its first
-// reply. Keep the last ones in the store and stand them in until then; a window whose
-// reset time has passed since is shown empty.
-async function withSaved($: EngineInterface, snap: Snapshot): Promise<Snapshot> {
-  if (snap.limits.length > 0) {
-    await $.store.set(SAVED, snap.limits)
-    return snap
-  }
-  const saved = (await $.store.get(SAVED)) as Limit[] | undefined
-  if (!Array.isArray(saved) || saved.length === 0) return snap
+// Two readings of one limit, from any sessions: a later window replaces an earlier one, and
+// within a window usage only grows, so the higher figure is the newer, whichever session
+// heard it and however long ago that session last refreshed.
+function newerOf(a: Reading | undefined, b: Reading): Reading {
+  if (!a) return b
+  const ra = a.resetsAt ? Date.parse(a.resetsAt) : NaN
+  const rb = b.resetsAt ? Date.parse(b.resetsAt) : NaN
+  if (Number.isNaN(ra) || Number.isNaN(rb)) return b.seenAt >= a.seenAt ? b : a
+  if (Math.abs(ra - rb) > SAME_WINDOW_MS) return rb > ra ? b : a
+  return b.pct > a.pct || (b.pct === a.pct && b.seenAt > a.seenAt) ? b : a
+}
+
+/** Every limit either list knows, each at its newest reading; `known`'s order first. */
+function mergeReadings(known: Reading[], fresh: Reading[]): Reading[] {
+  const out = new Map<string, Reading>()
+  for (const r of [...known, ...fresh]) out.set(r.kind, newerOf(out.get(r.kind), r))
+  return [...out.values()]
+}
+
+/** What the store holds under `readings`, or the old `limits` list as readings from long ago. */
+function readingsOf(raw: unknown, legacy?: unknown): Reading[] {
+  const list = Array.isArray(raw) ? raw : Array.isArray(legacy) ? legacy : []
+  return list.flatMap((r: unknown) => {
+    const o = r as Partial<Reading>
+    if (!o || typeof o.kind !== 'string' || typeof o.pct !== 'number') return []
+    const resetsAt = typeof o.resetsAt === 'string' ? o.resetsAt : undefined
+    return [{ kind: o.kind, pct: o.pct, resetsAt, seenAt: typeof o.seenAt === 'number' ? o.seenAt : 0 }]
+  })
+}
+
+// A window whose reset time has passed shows empty until a reply reports the new one; a
+// reading no session has heard since this one started is drawn faded, as possibly out of date.
+function limitOf(r: Reading, now: number, startedAt: number): Limit {
+  if (r.resetsAt && Date.parse(r.resetsAt) <= now) return { kind: r.kind, pct: 0, isSaved: true }
+  const l: Limit = { kind: r.kind, pct: r.pct, resetsAt: r.resetsAt }
+  if (r.seenAt < startedAt) l.isSaved = true
+  return l
+}
+
+const sameReadings = (a: Reading[], b: Reading[]) =>
+  a.length === b.length && a.every((r, i) => r.kind === b[i]!.kind && r.pct === b[i]!.pct && r.resetsAt === b[i]!.resetsAt)
+
+const sameLimits = (a: Limit[], b: Limit[]) =>
+  a.length === b.length &&
+  a.every((l, i) => l.kind === b[i]!.kind && l.pct === b[i]!.pct && l.resetsAt === b[i]!.resetsAt && !l.isSaved === !b[i]!.isSaved)
+
+// When this session began (`/clear` starts it over), for telling old readings from current ones.
+let startedAt = 0
+// This session's own latest figures, which the shared limits are folded into.
+let own: Snapshot | undefined
+
+// Each session hears the plan limits only with its own replies, so they're shared through the
+// store: this session's readings go in, and what it shows is the newest any session has heard.
+// A new session shows the last ones until its first reply; any session's reply brings them up to date.
+async function withShared($: EngineInterface, snap: Snapshot): Promise<Snapshot> {
   const now = await $.clock.now()
-  const limits = saved.map(l =>
-    l.resetsAt && Date.parse(l.resetsAt) <= now
-      ? { kind: l.kind, pct: 0, isSaved: true }
-      : { ...l, isSaved: true },
-  )
-  return { ...snap, limits }
+  const raw = await $.store.get(READINGS)
+  const known = readingsOf(raw, await $.store.get(SAVED))
+  const fresh = snap.limits.map(l => ({ kind: l.kind, pct: l.pct, resetsAt: l.resetsAt, seenAt: now }))
+  const merged = mergeReadings(known, fresh)
+  if (!Array.isArray(raw) || !sameReadings(merged, known)) await $.store.set(READINGS, merged)
+  return { ...snap, limits: merged.map(r => limitOf(r, now, startedAt)) }
+}
+
+// Another session may have heard newer limits since this one last drew: take them up.
+async function sync($: EngineInterface) {
+  if (!own) return
+  const cur = (await read($, gauges)).cur
+  const now = await $.clock.now()
+  const shared = readingsOf(await $.store.get(READINGS), await $.store.get(SAVED)).map(r => limitOf(r, now, startedAt))
+  if (cur && sameLimits(cur.limits, shared)) return
+  await take($, own, false)
 }
 
 const PROGRESS = 'progress'
@@ -1428,11 +1486,13 @@ async function play($: EngineInterface, change: (p: Progress, now: number) => St
 let toolCalls = 0
 let lastCtx: number | undefined
 
-async function take($: EngineInterface, fresh: Snapshot) {
-  const snap = await withSaved($, fresh)
+// `isOwn` is false for figures another session heard: it warned about them itself.
+async function take($: EngineInterface, fresh: Snapshot, isOwn = true) {
+  own = fresh
+  const snap = await withShared($, fresh)
   const before = (await read($, gauges)).cur
   await update($, gauges, g => ({ cur: snap, prev: g.cur }))
-  for (const l of snap.limits) {
+  for (const l of isOwn ? snap.limits : []) {
     const was = before?.limits.find(p => p.kind === l.kind)?.pct
     const crossed = WARN_AT.filter(at => l.pct >= at && (was ?? 0) < at).pop()
     if (was !== undefined && crossed !== undefined) {
@@ -1579,10 +1639,15 @@ export const register: Register = on => {
     await update($, game, () => ({ progress: saved, burst: false }))
     const hidden = (await $.store.get(HIDDEN)) === true
     await update($, isHidden, () => hidden)
-    await take($, snapshotOf(await $.session.usage()))
+    const usage = await $.session.usage()
+    startedAt = usage.startedAt
+    await take($, snapshotOf(usage))
     // Redraw each minute so the pace marks and reset times stay current.
     $.clock.every(60_000, () => {
       void update($, gauges, (g: Gauges) => ({ cur: g.cur, prev: g.cur }))
+    })
+    $.clock.every(SYNC_MS, () => {
+      void sync($)
     })
     return next(e)
   })
