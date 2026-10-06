@@ -828,14 +828,14 @@ const SCENES: Record<string, { sky: string; ground: string; layers: Layer[] }> =
       { grid: ['..####..', '..#w##.#', '#.####.#', '#.##w#ww', 'w.####.#', '#.#w##w#'], right: 0, colors: { '#': '#3c4560', w: '#c4a05a' } },
     ],
   },
+  // Sydney: the Opera House's sails on the harbour under a rising moon.
   australia: {
-    sky: '#4c3f55',
-    ground: '#7a4a35',
+    sky: '#3f4466',
+    ground: '#2e3956',
     layers: [
-      { grid: ['......####............###.', '..########......#########.', '##########################'], repeat: true, colors: { '#': '#634035' } },
-      { grid: ['.###.', '#####', '#####', '#####'], right: 1, up: 3, colors: { '#': '#d9a066' } },
-      { grid: ['....####..', '..###d###.', '.##d####d#', '####d#####'], right: 0, colors: { '#': '#a8573a', d: '#8e4630' } },
-      { grid: ['.#..', '##..', '.##.', '.###', '..##', '.#.#'], colors: { '#': '#2a2026' } },
+      { grid: ['..w.......w.......w....w..'], up: -1, repeat: true, colors: { w: '#55658a' } },
+      { grid: ['.##', '###', '.##'], left: 1, up: 7, colors: { '#': '#d8d0c4' } },
+      { grid: ['...#.....', '..##..#..', '.###.##.#', '####s##s#', 'bbbbbbbbb'], right: 0, colors: { '#': '#e2ddd2', s: '#b3ada4', b: '#8a7f74' } },
     ],
   },
   malaysia: {
