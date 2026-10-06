@@ -152,3 +152,35 @@ test('reaching 100% pays out at once, only once per window', async ($, on) => {
   await measure($, 100, reset)
   expect(await stats($)).toMatch(/· 210 XP/)
 })
+
+test('a gain shows on the band for a moment, then the band goes back to the balance', async ($, on) => {
+  mock.store(on)
+  const clock = mock.clock(on, { now: NOON })
+  on('session.measure', () => ({ changed: [] }))
+  on('turn.complete', () => ({ text: '' }))
+  await measure($, 20, NOON + DAY)
+  await clock.set(NOON + 10_000) // let the reading's own beat finish
+
+  // 25 daily + 10 for the turn + 50 for First Steps; 25 coins for the badge
+  await turn($)
+  const wide = await $.ui.mount({ plugin: 'usage-hud', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
+  expect(await wide.find({ type: 'Text', text: '+85xp' })).toBeDefined()
+  expect(await wide.find({ type: 'Text', text: '+25' })).toBeDefined()
+  await wide.unmount()
+
+  // Too narrow for the level: the gain shows beside the face instead.
+  const narrow = await $.ui.mount({ plugin: 'usage-hud', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 50 } as never })
+  expect(await narrow.find({ type: 'Text', text: /Lv1/ })).toBeUndefined()
+  expect(await narrow.find({ type: 'Text', text: '+85xp ●+25' })).toBeDefined()
+  await narrow.unmount()
+
+  const desktop = await $.ui.mount({ plugin: 'usage-hud', surface: 'desktop', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
+  expect(String((await desktop.find({ type: 'Svg' }))?.props.source)).toContain('values="0 2;0 1;0 0"')
+  await desktop.unmount()
+
+  await clock.set(NOON + 20_000)
+  const after = await $.ui.mount({ plugin: 'usage-hud', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
+  expect(await after.find({ type: 'Text', text: '+85xp' })).toBeUndefined()
+  expect(await after.find({ type: 'Text', text: /Lv1/ })).toBeDefined()
+  await after.unmount()
+})

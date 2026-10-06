@@ -49,6 +49,7 @@ The update check compares `plugin.json`'s `version` with git tags, so a release 
 - Coins: 1 per 1,000 written tokens (the remainder carries in `coinTokens`), 100 per level-up (added in `play()`), 25 per badge. Cache tokens don't count, or prices would spiral.
 - `ITEMS` is the one catalog: level unlocks have no `price`. Each item has a slot; `outfitOf()` fills every slot with its newest level unlock unless `outfit` picks an owned item or `none`. Buddies sit left of Clawd and step aside for the panic flames.
 - Shop commands (`bought`, `dressed`, `undressed`) run inside `play()` so a purchase can't race a turn's write.
+- Gains: `play()` puts what a change earned in `game.gain` (`{ xp, coins, fromFrac }`; a gain landing while one plays adds to it) and clears it `GAIN_MS` later. The cluster swaps `Lv7` and the balance for `+35xp` and `+3` for one hop, flashes the new part of the XP bar and turns the coin on its edge; when the cluster has given way, the gain hops up on Clawd's right instead (`clawdSvg`'s `pop`), and the terminal prints it beside the face. The still frame shows the gain, and the clearing redraw brings the figures back, so it reads right even where SMIL doesn't run. `docs/gain.gif` is the preview.
 
 ## Mood thresholds
 
