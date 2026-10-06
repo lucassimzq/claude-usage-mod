@@ -80,6 +80,7 @@ test('a backdrop is bought like an item and drawn behind the crab on the band', 
   const band = await $.ui.mount({ plugin: 'usage-hud', surface: 'desktop', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
   const svg = (await band.find({ type: 'Svg' })) as unknown as { props: { source: string } }
   expect(svg.props.source).toContain('#1b1d2b') // the space sky
+  expect(svg.props.source).toMatch(/<rect x="0" y="0" width="9\d\d" height="24" fill="#1b1d2b"/) // across the whole band
   await band.unmount()
 
   expect(await run($, 'remove backdrop')).toBe('Took off the space backdrop.')

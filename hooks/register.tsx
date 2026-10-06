@@ -609,7 +609,7 @@ function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width:
   }
   const scene = view?.outfit?.scene
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" shape-rendering="crispEdges">
-  ${scene ? sceneSvg(scene, 0, 0, SCENE_W, HEIGHT) : ''}
+  ${scene ? sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, width) : ''}
   ${clawdSvg(mood, doing, view?.outfit, view?.burst)}
   ${cluster?.svg ?? ''}${note?.svg ?? ''}
   ${units.join('\n')}
@@ -787,7 +787,9 @@ const grid4 = (g: string[], fill: string, ch: string, x: number, y: number) =>
 // standing on the ground (or `up` cells above it), `left` or `right` cells in from that edge,
 // so one scene fits both the band's tile and the shop's card.
 // Clawd covers the middle, so the things worth seeing sit at the edges and above his head.
-type Layer = { grid: string[]; left?: number; right?: number; up?: number; p?: number; colors: Record<string, string> }
+// `repeat` layers tile along the whole band behind the figures, so they stay low and dim:
+// below the bars (y ≥ 16) or in the top few pixels, never behind the text.
+type Layer = { grid: string[]; left?: number; right?: number; up?: number; p?: number; repeat?: boolean; colors: Record<string, string> }
 const SCENE_P = 2
 const SCENE_W = SPRITE_W - 4 // the band's tile, leaving a little air before the level cluster
 const GROUND_Y = 22 // Clawd's feet stand on this line, in the band and in the shop alike
@@ -799,7 +801,7 @@ const SCENES: Record<string, { sky: string; ground: string; layers: Layer[] }> =
     sky: '#2f423b',
     ground: '#26352d',
     layers: [
-      { grid: ['......####........######..', '...##########...##########', '##########################'], colors: { '#': '#364c43' } },
+      { grid: ['......####........######..', '...##########...##########', '##########################'], repeat: true, colors: { '#': '#364c43' } },
       { grid: ['y.......', '.....y..', '........', '..y.....'], right: 1, up: 6, p: 1.5, colors: { y: '#c9bd6a' } },
       { grid: PINE, colors: { '#': '#4e705d', t: '#5c4636' } },
       { grid: PINE.slice(2), right: 5, colors: { '#': '#4e705d', t: '#5c4636' } },
@@ -811,7 +813,7 @@ const SCENES: Record<string, { sky: string; ground: string; layers: Layer[] }> =
     ground: '#b59d78',
     layers: [
       { grid: ['.##.', '####', '####', '.##.'], right: 2, up: 6, colors: { '#': '#d9b25a' } },
-      { grid: ['..w......w......w......w..', '##########################'], colors: { '#': '#2f4b5c', w: '#5f8099' } },
+      { grid: ['..w......w......w......w..', '##########################'], repeat: true, colors: { '#': '#2f4b5c', w: '#5f8099' } },
       { grid: PALM, colors: { g: '#5f8f6a', t: '#7a5a3c' } },
       { grid: ['..rwr..', '.rwrwr.', 'rwrwrwr', '...p...', '...p...', '...p...'], right: 1, colors: { r: '#c06565', w: '#e2ddd2', p: '#8b9099' } },
     ],
@@ -821,7 +823,7 @@ const SCENES: Record<string, { sky: string; ground: string; layers: Layer[] }> =
     ground: '#2b3142',
     layers: [
       { grid: ['.##', '#..', '#..', '.##'], right: 2, up: 7, colors: { '#': '#d8d0c4' } },
-      { grid: ['..........##....#.........', '......#...##...###........', '.....###..##...###...##...', '.....###..##.#.###...##...'], colors: { '#': '#2e364d' } },
+      { grid: ['......#...##...###........', '.....###..##...###...##...', '.....###..##.#.###...##...'], repeat: true, colors: { '#': '#2e364d' } },
       { grid: ['##....', 'w#....', '##.###', '#w.#w#', 'w#.###', '##.w##', '#w.###'], colors: { '#': '#3c4560', w: '#c4a05a' } },
       { grid: ['..####..', '..#w##.#', '#.####.#', '#.##w#ww', 'w.####.#', '#.#w##w#'], right: 0, colors: { '#': '#3c4560', w: '#c4a05a' } },
     ],
@@ -830,6 +832,7 @@ const SCENES: Record<string, { sky: string; ground: string; layers: Layer[] }> =
     sky: '#4c3f55',
     ground: '#7a4a35',
     layers: [
+      { grid: ['......####............###.', '..########......#########.', '##########################'], repeat: true, colors: { '#': '#634035' } },
       { grid: ['.###.', '#####', '#####', '#####'], right: 1, up: 3, colors: { '#': '#d9a066' } },
       { grid: ['....####..', '..###d###.', '.##d####d#', '####d#####'], right: 0, colors: { '#': '#a8573a', d: '#8e4630' } },
       { grid: ['.#..', '##..', '.##.', '.###', '..##', '.#.#'], colors: { '#': '#2a2026' } },
@@ -839,6 +842,7 @@ const SCENES: Record<string, { sky: string; ground: string; layers: Layer[] }> =
     sky: '#2c3550',
     ground: '#2a3b33',
     layers: [
+      { grid: ['...#....#.....##.....#....', '..###..###....##....###...', '..###..###.##.##....###...'], repeat: true, colors: { '#': '#333e5c' } },
       { grid: ['.##.#', '#....', '#....', '.##..'], up: 7, colors: { '#': '#d9c06a' } },
       { grid: ['.#...#.', '.#...#.', '###.###', '#w#.#w#', '#######', '###.###', '#w#.#w#', '###.###', '#w#.#w#', '###.###'], right: 1, colors: { '#': '#9aa6b8', w: '#d9c06a' } },
       { grid: PALM, colors: { g: '#4f7a5a', t: '#7a5a3c' } },
@@ -850,27 +854,29 @@ const SCENES: Record<string, { sky: string; ground: string; layers: Layer[] }> =
     layers: [
       { grid: ['.......#..........#.....................#..........', '..#.................................#...........#.', '..........#.................#......................', '#..........................................#.......', '.....#..........#..........................#.....#.', '...................................................', '.#.................#.......................#.......', '..........#........................................'], up: 4, p: 1, colors: { '#': '#c8c8d8' } },
       { grid: ['..pppp..', '.pppppp.', 'rrrrrrrr', '.pppppp.', '..pppp..'], right: 1, up: 5, colors: { p: '#8f7fc9', r: '#c4a05a' } },
-      { grid: ['..cc.......cc......cc....cc..'], up: -1, colors: { c: '#33364a' } },
+      { grid: ['..cc.......cc......cc....cc..'], up: -1, repeat: true, colors: { c: '#33364a' } },
+      { grid: ['...........#..............................#.........', '..#....................#..........#................', '.................................................#.', '......#.........#..........................#.......', '...........................#.......................', '#..................................................'], up: 8, p: 1, repeat: true, colors: { '#': '#6e6e84' } },
     ],
   },
 }
 
-/** A backdrop filling the box at (x, y), `w` × `h`, its ground at `GROUND_Y`. */
-function sceneSvg(id: string, x: number, y: number, w: number, h: number): string {
+/** A backdrop: landmarks in the box at (x, y), `w` × `h`; sky, ground and `repeat` layers out to `full`. */
+function sceneSvg(id: string, x: number, y: number, w: number, h: number, full = w): string {
   const s = SCENES[id]
   if (!s) return ''
-  const clip = `scene-${id}-${w}`
+  const clip = `scene-${id}-${n2(full)}`
   const layers = s.layers.map(l => {
     const p = l.p ?? SCENE_P
     const cols = Math.max(...l.grid.map(r => r.length))
     const lx = l.right === undefined ? x + (l.left ?? 0) * SCENE_P : x + w - l.right * SCENE_P - cols * p
     const ly = GROUND_Y - (l.up ?? 0) * SCENE_P - l.grid.length * p
+    const xs = l.repeat ? Array.from({ length: Math.ceil(full / (cols * p)) }, (_, k) => x + k * cols * p) : [lx]
     return Object.entries(l.colors)
-      .map(([ch, fill]) => `<path d="${pixels(l.grid, lx, ly, p, ch)}" fill="${fill}"/>`)
+      .map(([ch, fill]) => `<path d="${xs.map(at => pixels(l.grid, at, ly, p, ch)).join('')}" fill="${fill}"/>`)
       .join('')
   })
-  return `<clipPath id="${clip}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3"/></clipPath>
-  <g clip-path="url(#${clip})"><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${s.sky}"/><rect x="${x}" y="${GROUND_Y}" width="${w}" height="${y + h - GROUND_Y}" fill="${s.ground}"/>${layers.join('')}</g>`
+  return `<clipPath id="${clip}"><rect x="${x}" y="${y}" width="${full}" height="${h}" rx="3"/></clipPath>
+  <g clip-path="url(#${clip})"><rect x="${x}" y="${y}" width="${full}" height="${h}" fill="${s.sky}"/><rect x="${x}" y="${GROUND_Y}" width="${full}" height="${y + h - GROUND_Y}" fill="${s.ground}"/>${layers.join('')}</g>`
 }
 
 /** Clawd alone in an outfit, for the shop: `scale` screen pixels per unit. */

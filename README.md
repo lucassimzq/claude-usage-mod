@@ -73,7 +73,7 @@ Tokens become coins: 1 for every 1,000 tokens Claude writes, plus 100 per level-
 
 <img src="docs/levels/shop.svg" alt="A mint-colored crab in a party hat and bow tie, with a desk plant beside him" width="100%">
 
-The crab has seven slots, so outfits mix: **head** (flower, cap, party hat, halo, crown), **face** (mustache, round glasses, monocle), **neck** (bow tie, medal), **back** (wings), **shell** (mint, lilac, rose, midnight), a **buddy** beside him (desk plant, tiny crab) and a **backdrop** behind him (forest, beach, city at night, Australia, Malaysia, space). Backdrops show on the desktop, VS Code and mobile bands; the terminal has no room for one. Prices run from 50 to 2,000 coins, and the fanciest items also need a minimum level. Level unlocks stay free and fill their slots until you pick something else.
+The crab has seven slots, so outfits mix: **head** (flower, cap, party hat, halo, crown), **face** (mustache, round glasses, monocle), **neck** (bow tie, medal), **back** (wings), **shell** (mint, lilac, rose, midnight), a **buddy** beside him (desk plant, tiny crab) and a **backdrop** that fills the whole band behind him (forest, beach, city at night, Australia, Malaysia, space). Backdrops show on the desktop, VS Code and mobile bands; the terminal has no room for one. Prices run from 50 to 2,000 coins, and the fanciest items also need a minimum level. Level unlocks stay free and fill their slots until you pick something else.
 
 `/usage-hud shop` opens it as a panel you click through: every item in its slot, with the crab trying it on. Press a card to buy it, put it on or take it off. It also fits a narrow sidebar, where the header stacks under the crab.
 
