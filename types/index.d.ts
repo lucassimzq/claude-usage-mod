@@ -53,8 +53,14 @@ export type Progress = {
   outfit: Record<string, string>
 }
 
-/** `burst` is true for a moment after a level-up, while the sparkle plays. */
-export type Game = { progress: Progress | null; burst: boolean }
+/**
+ * What the last change earned, while its animation plays: the XP and coins gained, and
+ * how full the XP bar was before (0 after a level-up, so the whole bar flashes).
+ */
+export type Gain = { xp: number; coins: number; fromFrac: number }
+
+/** `burst` is true for a moment after a level-up, while the sparkle plays; `gain` while a gain plays. */
+export type Game = { progress: Progress | null; burst: boolean; gain?: Gain }
 
 /**
  * The mod's own version against the newest release tag on GitHub. `latest` is set only

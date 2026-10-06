@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Activity, Game, Gauges, Limit, Progress, Snapshot, Update } from '../types'
+import type { Activity, Game, Gain, Gauges, Limit, Progress, Snapshot, Update } from '../types'
 
 const gauges = atom({ plugin: 'usage-hud', key: 'gauges' } as const, { cur: null, prev: null })
 const isHidden = atom({ plugin: 'usage-hud', key: 'isHidden' } as const, false)
@@ -172,6 +172,8 @@ const FONT: Record<string, string[]> = {
   L: ['#..', '#..', '#..', '#..', '###'],
   v: ['...', '#.#', '#.#', '#.#', '.#.'],
   k: ['#..', '#.#', '##.', '#.#', '#.#'],
+  p: ['###', '#.#', '###', '#..', '#..'],
+  '+': ['...', '.#.', '###', '.#.', '...'],
 }
 
 /** `s` in the pixel font, `p` px to a font pixel. */
@@ -180,6 +182,20 @@ function textPixels(s: string, x: number, y: number, p = FP): string {
 }
 
 const textWidth = (s: string, p = FP) => (s.length * 4 - 1) * p
+
+/** The font pixel that fits `s` into `room`: `p`, or smaller if it must be. */
+const fitP = (s: string, room: number, p: number) => Math.min(p, room / (s.length * 4 - 1))
+
+// A gain plays for this long; then the band redraws without it, so a still frame that
+// never animates still shows the gain, and the steady figures come back on their own.
+const GAIN_MS = 2400
+
+/** One discrete opacity step for a gain: shown until `at` of the beat, or hidden until then. */
+const gainBeat = (isShown: boolean, at = 0.8) =>
+  `<animate attributeName="opacity" values="${isShown ? '1;0' : '0;1'}" keyTimes="0;${at}" calcMode="discrete" dur="${GAIN_MS}ms" fill="freeze"/>`
+
+/** A two-step hop up into place; the `transform` attribute is the resting place, for a still frame. */
+const GAIN_HOP = `<animateTransform attributeName="transform" type="translate" values="0 2;0 1;0 0" keyTimes="0;0.05;0.1" calcMode="discrete" dur="${GAIN_MS}ms" fill="freeze"/>`
 
 // Clawd, 13 pixels wide: a 9-wide body, arms either side, four legs. Row 0 is the top
 // of his head; props drawn above it (the headphone band) use negative rows.
@@ -304,7 +320,15 @@ const SHELLS: Record<string, string> = {
 
 // Each mood is a small scene, not a dance: Clawd holds still and one prop moves, slowly.
 // `props` false leaves out the scene (headphones, notes, mug, flames): Clawd alone, as the shop shows him.
-function clawdSvg(mood: Mood, doing: Activity, outfit: Record<string, string> = {}, burst = false, props = true): string {
+// `pop` is a gain to show beside him, when the band has no room for the level cluster.
+function clawdSvg(
+  mood: Mood,
+  doing: Activity,
+  outfit: Record<string, string> = {},
+  burst = false,
+  props = true,
+  pop?: Gain,
+): string {
   const path = (d: string, fill: string, extra = '') => (d ? `<path d="${d}" fill="${fill}"${extra}/>` : '')
   const grid = (g: string[], fill: string, ch = '#', ox = 0, oy = 0, p = P) => path(pixels(g, ox, oy, p, ch), fill)
   const toggle = (dur: string, first: boolean) =>
@@ -321,7 +345,8 @@ function clawdSvg(mood: Mood, doing: Activity, outfit: Record<string, string> = 
 
   const typing = doing === 'typing' && mood !== 'asleep'
   const thinking = doing === 'thinking' && mood !== 'asleep'
-  const holdsMug = props && !typing && (mood === 'anxious' || mood === 'panic')
+  // He puts the mug down to catch a gain, so it has room on his right.
+  const holdsMug = props && !pop && !typing && (mood === 'anxious' || mood === 'panic')
   const shell = outfit.shell ? SHELLS[outfit.shell] : undefined
   const body = shell ?? (mood === 'asleep' ? COLORS.sleepy : CLAWD)
   const fx = (holdsMug ? 16 : 13) * P + 1 // where the props on the right begin
@@ -427,10 +452,23 @@ function clawdSvg(mood: Mood, doing: Activity, outfit: Record<string, string> = 
       drift(grid(ZED, COLORS.zed, '#', 0, 0, 0.8), fx + 7, [6, 3, 0, -3], 4, 2),
   }
   const left: Record<Mood, string> = { happy: '', anxious: sweat, frantic: sweat, panic: flames(-7), asleep: '' }
+  // A gain hops up on his right, `+10` over a coin and `+3`, and fades; the props wait.
+  const gained = pop && (pop.xp > 0 || pop.coins > 0)
+  const room = SPRITE_W - 8 - fx - 3 // a little gap before the figures
+  let popped = ''
+  if (pop && gained) {
+    const xp = `+${coinsLabel(pop.xp)}`
+    const coins = `+${coinsLabel(pop.coins)}`
+    const cp = fitP(`.${coins}`, room - 2, COIN_P)
+    if (pop.xp > 0) popped += path(textPixels(xp, 0, -3, fitP(xp, room, LV_P)), COLORS.level)
+    if (pop.coins > 0) popped += path(pixels(COIN, 0, 6, cp), COLORS.coin) + path(textPixels(coins, 5 * cp + 2, 6, cp), COLORS.coin)
+    popped = `<g transform="translate(${fx} 0)"><g transform="translate(0 0)">${popped}${GAIN_HOP}</g>${gainBeat(true, 0.85)}</g>`
+  }
+  const side = gained ? popped : thinking ? thought : props ? right[mood] : ''
   return `<g transform="translate(8 5)">
     ${wearing('back')}${legs}<path d="${pixels(BODY, 0, 0, P)}" fill="${body}"/>
     ${headphones}${eyes}${blush}${arms}${wearing('neck')}${wearing('face')}${wearing('head')}${laptop}${mug}${wearing('buddy')}
-    ${props ? left[mood] : ''}${thinking ? thought : props ? right[mood] : ''}${sparkles}
+    ${props ? left[mood] : ''}${side}${sparkles}
   </g>`
 }
 
@@ -609,8 +647,7 @@ function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width:
   }
   const scene = view?.outfit?.scene
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" shape-rendering="crispEdges">
-  ${scene ? sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, width) : ''}
-  ${clawdSvg(mood, doing, view?.outfit, view?.burst)}
+  ${scene ? sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, width) : ''}${clawdSvg(mood, doing, view?.outfit, view?.burst, true, cluster ? undefined : view?.gain)}
   ${cluster?.svg ?? ''}${note?.svg ?? ''}
   ${units.join('\n')}
 </svg>`
@@ -724,12 +761,18 @@ type GameView = {
   coins?: number
   outfit?: Record<string, string>
   burst?: boolean
+  gain?: Gain
 }
 
-function gameViewOf(p: Progress, now: number, burst = false): GameView {
+/** How far through its level `xp` is, 0 to 1. */
+function fracOf(xp: number): number {
+  const level = levelOf(xp)
+  return (xp - xpFor(level)) / (xpFor(level + 1) - xpFor(level))
+}
+
+function gameViewOf(p: Progress, now: number, burst = false, gain?: Gain): GameView {
   const level = levelOf(p.xp)
-  const frac = (p.xp - xpFor(level)) / (xpFor(level + 1) - xpFor(level))
-  return { level, frac, streak: liveStreak(p, now), coins: p.coins, outfit: outfitOf(p, level), burst }
+  return { level, frac: fracOf(p.xp), streak: liveStreak(p, now), coins: p.coins, outfit: outfitOf(p, level), burst, gain }
 }
 
 /** A coin count in at most four characters: `950`, `1.2k`, `12k`, `120k`. */
@@ -741,6 +784,8 @@ function coinsLabel(n: number): string {
 }
 
 const COIN = ['.###.', '#####', '#####', '#####', '.###.']
+// The coin turning on its edge, for a gain: face, half, edge, half, face again.
+const COIN_TURN = [COIN, ['..#..', '.###.', '.###.', '.###.', '..#..'], ['..#..', '..#..', '..#..', '..#..', '..#..'], ['..#..', '.###.', '.###.', '.###.', '..#..']]
 const LV_P = 1.4 // the level's font pixel, a little smaller than the bars' so the coins fit below
 const COIN_P = 1.2
 
@@ -758,14 +803,42 @@ function gameSvg(v: GameView, x: number, fit: Exclude<GameFit, 'none'>): { svg: 
   const coins = hasCoins ? coinsLabel(v.coins!) : ''
   const cw = hasCoins ? 5 * COIN_P + 2 + textWidth(coins, COIN_P) : 0
   const lw = Math.max(textWidth(lv, p), cw)
+  // A gain swaps a row's figure for what it gained (`+10xp`, `+3`), hops it up a pixel and
+  // swaps back, while the new part of the XP bar flashes and the coin turns once on its edge.
+  const g = v.gain
+  const swapped = (steady: string, gained: string | undefined) =>
+    gained === undefined ? steady : `<g opacity="0">${steady}${gainBeat(false)}</g><g transform="translate(0 0)">${gained}${GAIN_HOP}${gainBeat(true)}</g>`
+  const xpGain = g && g.xp > 0 ? (textWidth(`+${coinsLabel(g.xp)}xp`, p) <= lw ? `+${coinsLabel(g.xp)}xp` : `+${coinsLabel(g.xp)}`) : undefined
+  const end = v.frac > 0 ? Math.max(1, lw * v.frac) : 0
+  const from = g && g.fromFrac <= v.frac ? lw * g.fromFrac : 0
+  const flash =
+    xpGain && end > from
+      ? `<path d="${rect(from, xy - 0.4, n2(Math.max(1, end - from)), 2.4)}" fill="#fff" opacity="0"><animate attributeName="opacity" values="0;0.8;0;0.8;0" keyTimes="0;0.08;0.2;0.32;0.44" calcMode="discrete" dur="${GAIN_MS}ms" fill="freeze"/></path>`
+      : ''
   let svg =
-    `<path d="${textPixels(lv, 0, ly, p)}" fill="${COLORS.level}"/>` +
+    swapped(
+      `<path d="${textPixels(lv, 0, ly, p)}" fill="${COLORS.level}"/>`,
+      xpGain && `<path d="${textPixels(xpGain, 0, ly, fitP(xpGain, lw, p))}" fill="${COLORS.level}"/>`,
+    ) +
     `<path d="${rect(0, xy, n2(lw), 1.6)}" fill="${MUTED}" opacity="0.3"/>` +
-    (v.frac > 0 ? `<path d="${rect(0, xy, n2(Math.max(1, lw * v.frac)), 1.6)}" fill="${COLORS.level}"/>` : '')
+    (end > 0 ? `<path d="${rect(0, xy, n2(end), 1.6)}" fill="${COLORS.level}"/>` : '') +
+    flash
   if (hasCoins) {
+    const coinGain = g && g.coins > 0 ? `+${coinsLabel(g.coins)}` : undefined
+    const turns = COIN_TURN.length * 2
+    const coin = coinGain
+      ? COIN_TURN.map(
+          (f, k) =>
+            `<g opacity="${k === 0 ? 1 : 0}"><path d="${pixels(f, 0, cy, COIN_P)}" fill="${COLORS.coin}"/><animate attributeName="opacity" values="${Array.from({ length: turns + 1 }, (_, j) => (j % COIN_TURN.length === k ? 1 : 0)).join(';')}" keyTimes="${Array.from({ length: turns + 1 }, (_, j) => n2(j * 0.05)).join(';')}" calcMode="discrete" dur="${GAIN_MS}ms" fill="freeze"/></g>`,
+        ).join('')
+      : `<path d="${pixels(COIN, 0, cy, COIN_P)}" fill="${COLORS.coin}"/>`
+    const tx = 5 * COIN_P + 2
     svg +=
-      `<path d="${pixels(COIN, 0, cy, COIN_P)}" fill="${COLORS.coin}"/>` +
-      `<path d="${textPixels(coins, 5 * COIN_P + 2, cy, COIN_P)}" fill="${MUTED}"/>`
+      coin +
+      swapped(
+        `<path d="${textPixels(coins, tx, cy, COIN_P)}" fill="${MUTED}"/>`,
+        coinGain && `<path d="${textPixels(coinGain, tx, cy, fitP(coinGain, lw - tx, COIN_P))}" fill="${COLORS.coin}"/>`,
+      )
   }
   let width = lw
   if (fit === 'full' && v.streak >= 3) {
@@ -1276,6 +1349,7 @@ const PROGRESS = 'progress'
 const HIDDEN = 'hidden' // true while the person has hidden the band, across sessions
 let playing: Promise<unknown> = Promise.resolve()
 let sparkle: { cancel: () => void } | undefined
+let cheer: { cancel: () => void } | undefined
 
 // Applies one change to Clawd's progress, one change at a time: read fresh from the
 // store (another session may have moved it on), changed, saved, drawn, announced.
@@ -1288,7 +1362,27 @@ async function play($: EngineInterface, change: (p: Progress, now: number) => St
     const is = levelOf(p.xp)
     p.coins += COINS.level * Math.max(0, is - was)
     await $.store.set(PROGRESS, p)
-    await update($, game, (g: Game) => ({ progress: p, burst: is > was || g.burst }))
+    // What this change earned plays on the band; one that lands while the last still plays adds to it.
+    const xp = Math.max(0, p.xp - before.xp)
+    const coins = Math.max(0, p.coins - before.coins)
+    const gained = xp > 0 || coins > 0
+    await update($, game, (g: Game) => ({
+      progress: p,
+      burst: is > was || g.burst,
+      gain: !gained
+        ? g.gain
+        : {
+            xp: (g.gain?.xp ?? 0) + xp,
+            coins: (g.gain?.coins ?? 0) + coins,
+            fromFrac: is > was ? 0 : (g.gain?.fromFrac ?? fracOf(before.xp)),
+          },
+    }))
+    if (gained) {
+      cheer?.cancel()
+      cheer = $.clock.after(GAIN_MS + 200, () => {
+        void update($, game, (g: Game) => ({ progress: g.progress, burst: g.burst }))
+      })
+    }
     if (is > was) {
       const unlock = LEVELS.filter(m => m.at > was && m.at <= is && m.item).pop()?.item
       $.ui.toast(
@@ -1659,8 +1753,8 @@ export const register: Register = on => {
 
     const now = await $.clock.now()
     const list = tanksOf(cur, prev, now)
-    const { progress, burst } = await read($, game)
-    const view = progress ? gameViewOf(progress, now, burst) : undefined
+    const { progress, burst, gain } = await read($, game)
+    const view = progress ? gameViewOf(progress, now, burst, gain) : undefined
     const { latest, phase } = await read($, updates)
     const updateLabel = !latest ? undefined : phase === 'installing' ? 'updating…' : phase === 'restart' ? `restart for ${latest}` : undefined
     const onUpdate = async () => $.ui.toast(await installUpdate($))
@@ -1702,18 +1796,24 @@ export const register: Register = on => {
       const xpBar = view ? bar(view.frac * 100, 3) : ''
       const coins = view?.coins !== undefined ? `●${coinsLabel(view.coins)}` : ''
       const flame = view && view.streak >= 3 ? `🔥${view.streak}` : ''
+      // While a gain plays: what it earned, beside the bar and the balance it went to.
+      const xpGain = view?.gain?.xp ? `+${coinsLabel(view.gain.xp)}xp` : ''
+      const coinGain = view?.gain?.coins && coins ? `+${coinsLabel(view.gain.coins)}` : ''
       const gameWidth = (g: GameFit) =>
         !view || g === 'none'
           ? 0
-          : level.length + 1 + xpBar.length + (coins ? coins.length + 1 : 0) + 2 + (g === 'full' && flame ? flame.length + 2 : 0)
+          : level.length + 1 + xpBar.length + (xpGain ? xpGain.length + 1 : 0) + (coins ? coins.length + 1 : 0) +
+            (coinGain ? coinGain.length + 1 : 0) + 2 + (g === 'full' && flame ? flame.length + 2 : 0)
       // Fit the row to the terminal: give up the streak, the level, the long note, the cost,
       // the short note, then the bars.
       // The update offer is never given up: it sits at the right, and the rest fits around it.
       const offer = latest && phase === 'idle' ? `u: update ${latest}` : updateLabel
       const cols = (e.props.bodyColumns || e.viewport?.columns || 80) - (offer ? offer.length + 2 : 0)
       const figures = (bars: boolean) => list.reduce((w, t) => w + t.tag.length + (bars ? 6 : 0) + 5 + 2, 0)
+      // With no room for the level, a gain still shows beside the face.
+      const pop = [xpGain, view?.gain?.coins ? `●+${coinsLabel(view.gain.coins)}` : ''].filter(Boolean).join(' ')
       const widthOf = (bars: boolean, note: string | undefined, cost: string | undefined, g: GameFit) =>
-        face.length + 2 + gameWidth(g) + figures(bars) + (cost ? cost.length + 2 : 0) + (note ? note.length + 2 : 0) + 3
+        face.length + 2 + (g === 'none' && pop ? pop.length + 2 : 0) + gameWidth(g) + figures(bars) + (cost ? cost.length + 2 : 0) + (note ? note.length + 2 : 0) + 3
       const options: [boolean, string | undefined, string | undefined, GameFit][] = [
         [true, noteOf(worst), usd, 'full'],
         [true, noteOf(worst), undefined, 'full'],
@@ -1731,11 +1831,14 @@ export const register: Register = on => {
       return (
         <Box flexDirection="row" gap={2}>
           <Text color="#D97757">{face}</Text>
+          {g === 'none' && pop ? <Text color="yellow" bold>{pop}</Text> : null}
           {g !== 'none' ? (
             <Text>
               <Text color="magenta">{level} </Text>
               <Text color="magenta" dimColor>{xpBar}</Text>
+              {xpGain ? <Text color="magenta" bold>{` ${xpGain}`}</Text> : null}
               {coins ? <Text color="yellow" dimColor>{` ${coins}`}</Text> : null}
+              {coinGain ? <Text color="yellow" bold>{` ${coinGain}`}</Text> : null}
               {g === 'full' && flame ? <Text dimColor>{`  ${flame}`}</Text> : null}
             </Text>
           ) : null}
