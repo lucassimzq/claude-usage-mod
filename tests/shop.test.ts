@@ -67,3 +67,25 @@ for (const [columns, direction] of [[38, 'column'], [100, 'row']] as const) {
     await ui.unmount()
   })
 }
+
+test('a backdrop is bought like an item and drawn behind the crab on the band', async ($, on) => {
+  mock.store(on, { progress: { xp: 5000, coins: 1000 } })
+  mock.clock(on, { now: NOON })
+  on('command.run', () => ({ text: '' }))
+  on('session.measure', () => ({ changed: [] }))
+
+  expect(await run($, 'buy space')).toBe('Bought the space backdrop for 1,000 coins, and it\'s up behind Clawd. 0 coins left.')
+  expect(await run($, 'buy australia')).toBe('The Australia backdrop costs 600 coins and you have 0.')
+  await $.session.measure({ context: { window: 200_000, percent: 10 }, rateLimits: [], changed: [] })
+  const band = await $.ui.mount({ plugin: 'usage-hud', surface: 'desktop', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
+  const svg = (await band.find({ type: 'Svg' })) as unknown as { props: { source: string } }
+  expect(svg.props.source).toContain('#1b1d2b') // the space sky
+  expect(svg.props.source).toMatch(/<rect x="0" y="0" width="9\d\d" height="24" fill="#1b1d2b"/) // across the whole band
+  await band.unmount()
+
+  expect(await run($, 'wear none')).toBe('Clawd took everything off.')
+  expect(await run($, 'stats')).toMatch(/wearing: space backdrop/) // the backdrop isn't clothing
+  expect(await run($, 'shop list')).toMatch(/\nBackdrop: forest 300 · /)
+  expect(await run($, 'remove the backdrop')).toBe('Took off the space backdrop.')
+  expect(await run($, 'wear space')).toBe("Clawd's backdrop is now space.")
+})

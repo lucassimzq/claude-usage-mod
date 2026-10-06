@@ -48,7 +48,7 @@ export type Progress = {
   coinTokens: number
   /** Shop items bought; level unlocks are owned by reaching the level. */
   owned: string[]
-  /** What Clawd wears in each slot (`head`, `face`, `neck`, `back`, `shell`, `buddy`), or `none`.
+  /** What Clawd wears in each slot (`head`, `face`, `neck`, `back`, `shell`, `buddy`, and `scene` for the backdrop), or `none`.
    * A slot left out wears the newest level unlock for it. */
   outfit: Record<string, string>
 }
