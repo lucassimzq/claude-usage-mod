@@ -27,21 +27,21 @@ function github(on: On, tags: string[]) {
 }
 
 // git, answering each subcommand by name.
-function git(on: On, answers: Record<string, number> = {}) {
+function git(on: On, answers: Record<string, number> = {}, stdout: Record<string, string> = {}) {
   const ran: string[] = []
   on('process.run', (_$, e) => {
     const sub = e.argv[3]!
     ran.push(e.argv.slice(3).join(' '))
     const exitCode = answers[sub] ?? 0
-    return { value: { exitCode, stdout: '', stderr: exitCode ? `fatal: ${sub} failed` : '' } } as never
+    return { value: { exitCode, stdout: stdout[sub] ?? '', stderr: exitCode ? `fatal: ${sub} failed` : '' } } as never
   })
   return ran
 }
 
-function world(on: On, store?: Record<string, unknown>) {
+function world(on: On, store?: Record<string, unknown>, env: Record<string, string> = {}) {
   mock.store(on, store)
   const clock = mock.clock(on, { now: NOON })
-  mock.env(on, {})
+  mock.env(on, env)
   on('fs.read', (_$, e) => ({ value: e.path.endsWith('/.claude-plugin/plugin.json') ? '{ "version": "0.0.1" }' : '' }) as never)
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
@@ -94,7 +94,7 @@ test('pressing update fast-forwards the clone to the release tag', async ($, on)
   await measure($)
   const band = await $.ui.mount({ plugin: 'usage-hud', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
   await band.press({ key: 'update' })
-  expect(ran).toEqual(['rev-parse --is-inside-work-tree', 'fetch --quiet --no-tags origin tag v0.0.2', 'merge --ff-only --quiet refs/tags/v0.0.2'])
+  expect(ran).toEqual(['rev-parse --show-prefix', 'fetch --quiet --no-tags origin tag v0.0.2', 'merge --ff-only --quiet refs/tags/v0.0.2'])
   expect(await band.find({ type: 'Text', text: /updating…/ })).toBeDefined()
   await band.unmount()
 })
@@ -118,7 +118,41 @@ test('a failed git step leaves the button and says how to update by hand', async
   github(on, ['v0.0.2'])
   git(on, { merge: 128 })
   await start($)
-  expect(await run($, 'update')).toMatch(/^Couldn't update usage-hud: fatal: merge failed\. Run `git -C .* pull` to update by hand\.$/)
+  expect(await run($, 'update')).toMatch(/^Couldn't update usage-hud: fatal: merge failed\. Run `git -C ".*" pull` to update by hand\.$/)
+})
+
+test('a failed merge leaves no word of an update for the next session', async ($, on) => {
+  world(on)
+  github(on, ['v0.0.2'])
+  git(on, { merge: 128 })
+  const toasts: string[] = []
+  on('ui.toast', (_$, e) => {
+    toasts.push(e.text)
+    return { value: undefined } as never
+  })
+  await start($)
+  await run($, 'update')
+  await start($) // the next session
+  expect(toasts.filter(t => /updated himself/.test(t))).toEqual([])
+})
+
+test('a copy inside another git repository leaves that repository alone', async ($, on) => {
+  world(on)
+  github(on, ['v0.0.2'])
+  const ran = git(on, {}, { 'rev-parse': 'vendor/claude-usage-mod/\n' })
+  await start($)
+  expect(await run($, 'update')).toMatch(/sits inside another git repository/)
+  expect(ran).toEqual(['rev-parse --show-prefix'])
+})
+
+test('/usage-hud update asks GitHub even with nonessential traffic off', async ($, on) => {
+  world(on, undefined, { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' })
+  const calls = github(on, ['v0.0.2'])
+  git(on)
+  await start($)
+  expect(calls.count).toBe(0)
+  expect(await run($, 'update')).toBe('Installing usage-hud v0.0.2…')
+  expect(calls.count).toBe(1)
 })
 
 test('a copy that is not a git clone is told to update the way it was installed', async ($, on) => {
@@ -156,5 +190,17 @@ test('a hidden band stays hidden in the next session', async ($, on) => {
   const band = await $.ui.mount({ plugin: 'usage-hud', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
   expect(await band.find({ type: 'Text', text: /7d/ })).toBeUndefined()
   await band.unmount()
+  expect(await run($, '')).toBe('Usage band shown.')
+})
+
+test('show and hide say which, and a typo changes nothing', async ($, on) => {
+  world(on)
+  github(on, ['v0.0.1'])
+  await start($)
+  expect(await run($, 'show')).toBe('Usage band shown.')
+  expect(await run($, 'hide')).toMatch(/^Usage band hidden/)
+  expect(await run($, 'hide')).toMatch(/^Usage band hidden/)
+  expect(await run($, 'help')).toMatch(/isn't a command/)
+  // Still hidden: a bare toggle brings it back
   expect(await run($, '')).toBe('Usage band shown.')
 })

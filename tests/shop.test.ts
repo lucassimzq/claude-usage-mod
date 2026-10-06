@@ -62,7 +62,7 @@ for (const [columns, direction] of [[38, 'column'], [100, 'row']] as const) {
     mock.clock(on, { now: NOON })
     const ui = await $.ui.mount({ ...PANE, surface: 'desktop', props: { bodyColumns: columns } as never })
     const header = ((await ui.drawn()) as unknown as { children: { props: Record<string, unknown> }[] }).children[0]
-    expect(header.props.flexDirection).toBe(direction)
+    expect(header?.props.flexDirection).toBe(direction)
     expect(await ui.find({ key: 'none', type: 'Button' })).toBeDefined()
     await ui.unmount()
   })

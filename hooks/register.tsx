@@ -1441,7 +1441,8 @@ async function play($: EngineInterface, change: (p: Progress, now: number) => St
     const was = levelOf(before.xp)
     const is = levelOf(p.xp)
     p.coins += COINS.level * Math.max(0, is - was)
-    await $.store.set(PROGRESS, p)
+    // Most readings change nothing; skipping those writes keeps another session's change from being overwritten.
+    if (JSON.stringify(p) !== JSON.stringify(before)) await $.store.set(PROGRESS, p)
     // What this change earned plays on the band; one that lands while the last still plays adds to it.
     const xp = Math.max(0, p.xp - before.xp)
     const coins = Math.max(0, p.coins - before.coins)
@@ -1526,13 +1527,14 @@ const LATEST = 'latest' // { tag, checkedAt }: the last answer from GitHub, shar
 const INSTALLING = 'installing' // the tag a press last installed, so the reloaded mod can say so
 
 // Asks GitHub for the newest release tag at most every few hours (any session's answer
-// counts), and marks the band when it's newer than what's running.
+// counts), and marks the band when it's newer than what's running. `isForced` is the person
+// typing `/usage-hud update`, which asks even with nonessential traffic turned off.
 async function checkForUpdate($: EngineInterface, isForced = false): Promise<string | undefined> {
   const now = await $.clock.now()
   const saved = (await $.store.get(LATEST)) as { tag?: string; checkedAt?: number } | undefined
   let tag = saved?.tag
   const isDue = isForced || !saved?.checkedAt || now - saved.checkedAt >= CHECK_EVERY_MS
-  if (isDue && !(await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'))) {
+  if (isDue && (isForced || !(await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')))) {
     try {
       const res = await $.http.fetch(`https://api.github.com/repos/${REPO}/tags?per_page=100`, {
         headers: { accept: 'application/vnd.github+json', 'user-agent': 'usage-hud' },
@@ -1563,20 +1565,25 @@ async function installUpdate($: EngineInterface): Promise<string> {
   // No prompt for credentials: a remote that asks for them fails at once instead of hanging until the timeout.
   const git = (...args: string[]) =>
     $.process.run(['git', '-C', root, ...args], { timeoutMs: 60_000, env: { GIT_TERMINAL_PROMPT: '0' } })
-  const manual = `Run \`git -C ${root} pull\` to update by hand.`
+  const manual = `Run \`git -C "${root}" pull\` to update by hand.`
   try {
-    const clone = await git('rev-parse', '--is-inside-work-tree')
+    // The folder must be the top of its own clone: one copied into another repository (a dotfiles
+    // or project repo) would otherwise fetch and fast-forward that repository to its own tag.
+    const clone = await git('rev-parse', '--show-prefix')
     if (clone.exitCode !== 0) return `usage-hud ${latest} is out, but this copy isn't a git clone. Update it the way you installed it.`
+    if (clone.stdout.trim()) return `usage-hud ${latest} is out, but this copy sits inside another git repository, so it won't run git there. Update it the way you installed it.`
     await update($, updates, (u: Update): Update => ({ ...u, phase: 'installing' }))
     // Just the one tag: nothing else the remote holds is fetched, and a stray tag elsewhere can't fail the update.
     const fetched = await git('fetch', '--quiet', '--no-tags', 'origin', 'tag', latest)
+    // Saved before the files change, since the reload they set off can replace this module mid-call.
+    if (fetched.exitCode === 0) await $.store.set(INSTALLING, latest)
     const result = fetched.exitCode === 0 ? await git('merge', '--ff-only', '--quiet', `refs/tags/${latest}`) : fetched
     if (result.exitCode !== 0) {
+      await $.store.delete(INSTALLING).catch(() => undefined)
       await update($, updates, (u: Update): Update => ({ ...u, phase: 'idle' }))
       const why = result.stderr.trim().split('\n')[0] || `git exited with ${result.exitCode}`
       return `Couldn't update usage-hud: ${why}. ${manual}`
     }
-    await $.store.set(INSTALLING, latest)
     restartHint?.cancel()
     restartHint = $.clock.after(8000, () => {
       void update($, updates, (u: Update): Update => ({ ...u, phase: 'restart' }))
@@ -1584,6 +1591,7 @@ async function installUpdate($: EngineInterface): Promise<string> {
     })
     return `Installing usage-hud ${latest}…`
   } catch {
+    await $.store.delete(INSTALLING).catch(() => undefined)
     await update($, updates, (u: Update): Update => ({ ...u, phase: 'idle' }))
     return `Couldn't run git here. ${manual}`
   }
@@ -1619,7 +1627,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'usage-hud',
       description: "Show or hide the usage band; `stats` for Clawd's level, `shop` to spend coins on outfits, `update` to get the newest version",
-      argumentHint: '[stats | shop | shop list | buy <item> | wear <item> | remove <item> | update]',
+      argumentHint: '[show | hide | stats | shop | shop list | buy <item> | wear <item> | remove <item> | update]',
     })
     try {
       const manifest = JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`)) as { version?: string }
@@ -1630,7 +1638,7 @@ export const register: Register = on => {
     // A reload after an update lands here with the new code: say so once.
     const installed = (await $.store.get(INSTALLING)) as string | undefined
     if (installed) {
-      await $.store.delete(INSTALLING)
+      await $.store.delete(INSTALLING).catch(() => undefined)
       if (!isNewer(installed, running)) $.ui.toast(`Clawd updated himself to v${running}`)
     }
     await update($, updates, (): Update => ({ current: running, phase: 'idle' }))
@@ -1642,9 +1650,15 @@ export const register: Register = on => {
     await update($, game, () => ({ progress: saved, burst: false }))
     const hidden = (await $.store.get(HIDDEN)) === true
     await update($, isHidden, () => hidden)
-    const usage = await $.session.usage()
-    startedAt = usage.startedAt
-    await take($, snapshotOf(usage))
+    // If the figures can't be read yet, the first measure brings them; the timers start regardless.
+    try {
+      const usage = await $.session.usage()
+      startedAt = usage.startedAt
+      await take($, snapshotOf(usage))
+    } catch (err) {
+      startedAt = await $.clock.now()
+      $.ui.log(`couldn't read usage at start: ${err instanceof Error ? err.message : String(err)}`, { to: 'debug' })
+    }
     // Redraw each minute so the pace marks and reset times stay current.
     $.clock.every(60_000, () => {
       void update($, gauges, (g: Gauges) => ({ cur: g.cur, prev: g.cur }))
@@ -1711,8 +1725,12 @@ export const register: Register = on => {
     if (change) {
       return { text: (await play($, p => change(p, arg))) ?? 'Something went wrong; nothing changed.' }
     }
+    // Bare `/usage-hud` toggles; `show` and `hide` say which. Anything else is a typo, not a toggle.
+    if (verb !== '' && verb !== 'show' && verb !== 'hide') {
+      return { text: `/usage-hud ${verb} isn't a command. Try /usage-hud (show or hide the band), stats, shop, buy, wear, remove or update.` }
+    }
     let hidden = false
-    await update($, isHidden, h => (hidden = !h))
+    await update($, isHidden, h => (hidden = verb === 'show' ? false : verb === 'hide' ? true : !h))
     await $.store.set(HIDDEN, hidden)
     return { text: hidden ? 'Usage band hidden. /usage-hud brings it back.' : 'Usage band shown.' }
   })
@@ -1765,7 +1783,7 @@ export const register: Register = on => {
                   })}
                 {slot === 'scene' ? (
                   <Text key="scene-note" dimColor>
-                    (drawn in the desktop app, VS Code and mobile, not here)
+                    (drawn on the desktop app's band, not here)
                   </Text>
                 ) : null}
               </Box>
@@ -1949,7 +1967,7 @@ export const register: Register = on => {
             </Text>
           ) : null}
           {list.map(t => (
-            <Text>
+            <Text key={t.tag}>
               <Text dimColor>{t.tag} </Text>
               {bars ? <Text color={color(t.pct)}>{bar(t.pct)} </Text> : null}
               <Text bold color={bars ? undefined : color(t.pct)} dimColor={t.isSaved}>{Math.round(t.pct)}%</Text>

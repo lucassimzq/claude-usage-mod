@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Claude%20Code-mod-D97757?style=for-the-badge" alt="Claude Code mod">
-  <img src="https://img.shields.io/badge/version-0.0.1-6b9e7a?style=for-the-badge" alt="Version 0.0.1">
+  <img src="https://img.shields.io/badge/version-1.0.0-6b9e7a?style=for-the-badge" alt="Version 1.0.0">
   <img src="https://img.shields.io/badge/requires-2.1.286%2B-444?style=for-the-badge" alt="Requires Claude Code 2.1.286 or later">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c4a05a?style=for-the-badge" alt="MIT license"></a>
   <a href="https://github.com/lucassimzq"><img src="https://img.shields.io/badge/made%20by-lucassimzq-111?style=for-the-badge" alt="Made by lucassimzq"></a>
@@ -73,7 +73,7 @@ Tokens become coins: 1 for every 1,000 tokens Claude writes, plus 100 per level-
 
 <img src="docs/levels/shop.svg" alt="A mint-colored crab in a party hat and bow tie, with a desk plant beside him" width="100%">
 
-The crab has seven slots, so outfits mix: **head** (flower, cap, party hat, halo, crown), **face** (mustache, round glasses, monocle), **neck** (bow tie, medal), **back** (wings), **shell** (mint, lilac, rose, midnight), a **buddy** beside him (desk plant, tiny crab) and a **backdrop** that fills the whole band behind him (forest, beach, city at night, Australia, Malaysia, space). Backdrops show on the desktop, VS Code and mobile bands; the terminal has no room for one. Prices run from 50 to 2,000 coins, and the fanciest items also need a minimum level. Level unlocks stay free and fill their slots until you pick something else.
+The crab has seven slots, so outfits mix: **head** (flower, cap, party hat, halo, crown), **face** (mustache, round glasses, monocle), **neck** (bow tie, medal), **back** (wings), **shell** (mint, lilac, rose, midnight), a **buddy** beside him (desk plant, tiny crab) and a **backdrop** that fills the whole band behind him (forest, beach, city at night, Australia, Malaysia, space). Backdrops show on the desktop app's band; the terminal has no room for one. Prices run from 50 to 2,000 coins, and the fanciest items also need a minimum level. Level unlocks stay free and fill their slots until you pick something else.
 
 `/usage-hud shop` opens it as a panel you click through: every item in its slot, with the crab trying it on. Press a card to buy it, put it on or take it off. It also fits a narrow sidebar, where the header stacks under the crab.
 
@@ -120,7 +120,7 @@ You need Claude Code 2.1.286 or later. The `5h` and `7d` bars need a Claude subs
 
 ## Use
 
-- **`/usage-hud`** hides or shows the band, and remembers your choice for new sessions.
+- **`/usage-hud`** hides or shows the band (`/usage-hud hide` and `show` say which), and remembers your choice for new sessions.
 - **`/usage-hud stats`** shows the crab's level, XP, streak, coins, tokens counted and badges.
 - **`/usage-hud shop`** opens the shop as a panel: every item in its slot, with the crab trying it on. Press one to buy it, put it on or take it off. In the terminal, Tab or the arrows move between items, Enter presses, Esc closes. `/usage-hud wear`, `buy` or `remove` with no item open it too.
 - **`/usage-hud buy <item>`**, **`wear <item>`** and **`remove <item>`** still work as typed commands (`wear none` takes it all off), and **`/usage-hud shop list`** prints the shop as text.
@@ -131,7 +131,7 @@ The desktop Code tab draws the pixel version. The terminal shows text bars with 
 
 ## Updating
 
-The mod checks GitHub for a newer release every few hours. When there is one, the band shows an **Update to v…** button (`u: update v…` in the terminal; `u` presses it while the band has focus). Pressing it runs `git` in your clone: it fetches that one release tag and fast-forwards to it, so your own changes are never overwritten; if git can't fast-forward, it tells you and changes nothing. That means the mod runs whatever code is at the release tag on GitHub, the same as a `git pull` would, so only press it if you trust this repo (or review the diff first and update by hand).
+The mod checks GitHub for a newer release every few hours. When there is one, the band shows an **Update to v…** button (`u: update v…` in the terminal; `u` presses it while the band has focus). Pressing it runs `git` in your clone: it fetches that one release tag and fast-forwards to it, so your own changes are never overwritten; if git can't fast-forward, it tells you and changes nothing. It only runs git when the mod's folder is a clone of its own, never in a repository it was copied into. That means the mod runs whatever code is at the release tag on GitHub, the same as a `git pull` would, so only press it if you trust this repo (or review the diff first and update by hand).
 
 Sessions that are already open pick up the new version in place: Claude Code watches the mod's folder, reloads it once the files change, and the crab says he updated. Your level, coins and saved limits carry over. If a session doesn't watch the folder (the desktop app without `CLAUDE_CODE_PLUGIN_DIR_WATCH`), the band says to restart, and the next session loads the new version.
 
