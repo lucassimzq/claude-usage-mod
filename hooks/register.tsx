@@ -612,7 +612,9 @@ function planOf(
 const compactUnitWidth = (list: Tank[]) =>
   Math.max(...list.map(t => textWidth(t.tag) + 5 + textWidth(`${Math.round(t.pct)}%`))) + UNIT_GAP + 4
 
-function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width: number, view?: GameView): string {
+// `width` is what the figures are laid out in; `paint` (at least `width`) is how far the
+// drawing reaches, so a backdrop can run on under a control laid over its right end.
+function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width: number, view?: GameView, paint = width): string {
   const worst = list.reduce((a, b) => (b.pct > a.pct ? b : a))
   const mood = moodOf(worst.pct)
   const sizes = view ? { full: gameSvg(view, 0, 'full').width, short: gameSvg(view, 0, 'short').width } : undefined
@@ -648,8 +650,9 @@ function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width:
   const scene = view?.outfit?.scene
   // The thought and clock bubbles are open, so the landmarks behind them step aside.
   const bubble = (doing === 'thinking' && mood !== 'asleep') || mood === 'frantic'
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}" shape-rendering="crispEdges">
-  ${scene ? `<g opacity="${SCENE_OPACITY}">${sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, width, left, bubble)}</g>` : ''}${clawdSvg(mood, doing, view?.outfit, view?.burst, true, cluster ? undefined : view?.gain)}
+  const full = Math.max(width, paint)
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${full}" height="${HEIGHT}" viewBox="0 0 ${full} ${HEIGHT}" shape-rendering="crispEdges">
+  ${scene ? `<g opacity="${SCENE_OPACITY}">${sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, full, left, bubble)}</g>` : ''}${clawdSvg(mood, doing, view?.outfit, view?.burst, true, cluster ? undefined : view?.gain)}
   ${cluster?.svg ?? ''}${note?.svg ?? ''}
   ${units.join('\n')}
 </svg>`
@@ -1789,12 +1792,27 @@ export const register: Register = on => {
       // The image can't take a press, so the refresh control is a real Button beside it.
       const offer = latest && phase === 'idle' ? `Update to ${latest}` : updateLabel
       const width = Math.max(160, Math.round(columns * PX_PER_COLUMN) - REFRESH_W - (offer ? offer.length * 7 + 28 : 0))
+      const doing = e.props.isWorking ? await read($, activity) : 'idle'
+      const alt = (view ? [`Level ${view.level}`].concat(view.coins !== undefined ? [`${view.coins} coins`] : []) : []).concat(list.map(t => `${t.tag} ${Math.round(t.pct)}%`)).join(', ')
+      // A backdrop runs on to the right edge, under the refresh Button laid over its end;
+      // the figures still keep clear of it. With an update offer in the row, the usual layout.
+      if (view?.outfit?.scene && !offer) {
+        const full = width + REFRESH_W
+        return (
+          <Box flexDirection="row" alignItems="center" position="relative">
+            <Svg source={pixelSvg(list, cur.usd, doing, width, view, full)} alt={alt} width={full} height={HEIGHT} />
+            <Box position="absolute" right={0} top={0}>
+              <Button key="refresh" label="↻" plain dimColor onPress={() => refresh($)} />
+            </Box>
+          </Box>
+        )
+      }
       // Drawn as an image, not an interactive frame: it stays transparent, and SMIL still plays.
       return (
         <Box flexDirection="row" alignItems="center" gap={1}>
           <Svg
-            source={pixelSvg(list, cur.usd, e.props.isWorking ? await read($, activity) : 'idle', width, view)}
-            alt={(view ? [`Level ${view.level}`].concat(view.coins !== undefined ? [`${view.coins} coins`] : []) : []).concat(list.map(t => `${t.tag} ${Math.round(t.pct)}%`)).join(', ')}
+            source={pixelSvg(list, cur.usd, doing, width, view)}
+            alt={alt}
             width={width}
             height={HEIGHT}
           />
