@@ -8,7 +8,7 @@ const RESETS = new Date(NOON + 3 * HOUR).toISOString()
 const WEEK_RESETS = new Date(NOON + 50 * HOUR).toISOString()
 
 // One store file for every session, which a test can change as another session would.
-function world(on: On, data: Record<string, unknown> = {}) {
+function world(on: On, data: Record<string, unknown> = {}, usage: () => unknown = () => ({ startedAt: NOON, context: { window: 200_000, percent: 10 }, rateLimits: [] })) {
   on('store.get', (_$, e) => ({ value: structuredClone(data[e.key]) }) as never)
   on('store.set', (_$, e) => {
     data[e.key] = structuredClone(e.value)
@@ -25,7 +25,7 @@ function world(on: On, data: Record<string, unknown> = {}) {
   on('fs.read', () => ({ value: '{ "version": "0.0.1" }' }) as never)
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
-  on('session.usage', () => ({ value: { startedAt: NOON, context: { window: 200_000, percent: 10 }, rateLimits: [] } }) as never)
+  on('session.usage', () => ({ value: usage() }) as never)
   on('session.measure', () => ({ changed: [] }))
   return { data, clock }
 }
@@ -103,4 +103,18 @@ test('limits kept by an older version still stand in until a reply', async ($, o
   world(on, { limits: [{ kind: 'five_hour', pct: 40, resetsAt: RESETS }] })
   await start($)
   expect(await fiveHourShown($)).toBe('40')
+})
+
+test('a session whose first usage read fails still takes up the shared figures', async ($, on) => {
+  let fails = true
+  const { data, clock } = world(on, {}, () => {
+    if (fails) throw new Error('not ready')
+    return { startedAt: NOON, context: { window: 200_000, percent: 10 }, rateLimits: [] }
+  })
+  await start($)
+  fails = false
+  await measure($, 40)
+  data.readings = [reading(75, RESETS, NOON + 5_000)]
+  await clock.advance(10_000)
+  expect(await fiveHourShown($)).toBe('75')
 })
