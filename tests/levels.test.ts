@@ -35,7 +35,7 @@ test('turns earn XP, a daily bonus and First Steps', async ($, on) => {
   // 25 daily + 2 × 10 per turn + 50 for First Steps
   expect(await stats($)).toMatch(/level 1, Hatchling · 95 XP/)
   expect(await stats($)).toMatch(/Streak: 1 day/)
-  expect(await stats($)).toMatch(/Badges 1\/13: First Steps/)
+  expect(await stats($)).toMatch(/Badges 1\/18: First Steps/)
   expect(await stats($)).toMatch(/Turns: 2 · tokens: 12k in, 400 out/)
 })
 

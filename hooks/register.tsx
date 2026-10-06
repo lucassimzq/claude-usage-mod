@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Activity, Game, Gauges, Limit, Progress, Snapshot, Update } from '../types'
+import type { Activity, Game, Gauges, Limit, Progress, Recap, Snapshot, Today, Update, Week } from '../types'
 
 const gauges = atom({ plugin: 'usage-hud', key: 'gauges' } as const, { cur: null, prev: null })
 const isHidden = atom({ plugin: 'usage-hud', key: 'isHidden' } as const, false)
@@ -172,6 +172,8 @@ const FONT: Record<string, string[]> = {
   L: ['#..', '#..', '#..', '#..', '###'],
   v: ['...', '#.#', '#.#', '#.#', '.#.'],
   k: ['#..', '#.#', '##.', '#.#', '#.#'],
+  '/': ['..#', '..#', '.#.', '#..', '#..'],
+  '-': ['...', '...', '###', '...', '...'],
 }
 
 /** `s` in the pixel font, `p` px to a font pixel. */
@@ -714,6 +716,8 @@ type GameView = {
   coins?: number
   outfit?: Record<string, string>
   burst?: boolean
+  /** Today's quests: how many are done, of how many. */
+  quests?: { done: number; of: number }
 }
 
 function gameViewOf(p: Progress, now: number, burst = false): GameView {
@@ -767,7 +771,86 @@ function gameSvg(v: GameView, x: number, fit: Exclude<GameFit, 'none'>): { svg: 
       `<path d="${textPixels(count, fx + 7.6, ty)}" fill="${MUTED}"/>`
     width = fx + 7.6 + textWidth(count)
   }
+  // Today's quests, as a checkbox and a count: ticked once they're all done.
+  if (fit === 'full' && v.quests && v.quests.of > 0) {
+    const qx = width + 7
+    const all = v.quests.done >= v.quests.of
+    const count = `${v.quests.done}/${v.quests.of}`
+    svg +=
+      grid4(all ? QUEST_DONE : QUEST_BOX, all ? TONES.ok : MUTED, '#', qx, ty + 1.7) +
+      `<path d="${textPixels(count, qx + 8.6, ty)}" fill="${MUTED}"/>`
+    width = qx + 8.6 + textWidth(count)
+  }
   return { svg: `<g transform="translate(${n2(x)} 0)">${svg}</g>`, width: Math.round(width) }
+}
+
+const QUEST_BOX = ['#####', '#...#', '#...#', '#...#', '#####']
+const QUEST_DONE = ['#####', '#####', '#####', '#####', '#####']
+
+// A badge as a pixel medal: a ribbon over a disc with a star; grey until it's earned.
+const MEDAL_PX = ['.##.##.', '.##.##.', '..###..', '.#####.', '#######', '#######', '#######', '.#####.', '..###..']
+const MEDAL_STAR = ['', '', '', '', '...#...', '..###..', '...#...']
+const LOCKED = '#3a3f47'
+
+/** One badge medal, `scale` screen pixels per unit; 7 by 9 units. */
+function medalSvg(earned: boolean, scale: number): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${7 * scale}" height="${9 * scale}" viewBox="0 0 7 9" shape-rendering="crispEdges">
+  <path d="${pixels(MEDAL_PX.slice(0, 2), 0, 0, 1)}" fill="${earned ? COLORS.flameOut : LOCKED}"/>
+  <path d="${pixels(['', '', ...MEDAL_PX.slice(2)], 0, 0, 1)}" fill="${earned ? COLORS.coin : LOCKED}"/>
+  ${earned ? `<path d="${pixels(MEDAL_STAR, 0, 0, 1)}" fill="#fff5d6"/>` : ''}
+</svg>`
+}
+
+const CARD_W = 300
+const CARD_H = 170
+const CARD_FONT = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+
+/** A short date for the card and the panes: `Sep 29`. */
+function shortDate(day: string): string {
+  const [y, m, d] = day.split('-').map(Number)
+  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return y ? `${names[(m ?? 1) - 1]} ${d ?? 1}` : day
+}
+
+const escapeXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
+
+/**
+ * The share card: the week's figures beside Clawd in his outfit, 300 by 170 units drawn at
+ * `scale`. Static (no SMIL), so a rasterizer draws it the same as a browser. `isLive` says
+ * the week isn't over yet.
+ */
+function cardSvg(r: Recap, outfit: Record<string, string>, scale = 2, isLive = false): string {
+  const ink = '#e6e6e6'
+  const dim = '#8b9099'
+  const text = (s: string, x: number, y: number, size: number, fill: string, extra = '') =>
+    `<text x="${x}" y="${y}" fill="${fill}" style="font: ${size}px ${CARD_FONT}"${extra}>${escapeXml(s)}</text>`
+  const level = r.levelTo > r.levelFrom ? `Lv ${r.levelFrom} → ${r.levelTo}` : `Lv ${r.levelTo}`
+  // Four short rows, each under 26 characters so none runs off the card.
+  const rows = [
+    `${r.streak}-day streak${r.days ? ` · ${r.days}/7 days` : ''}`,
+    r.scored ? `${r.paced} of ${r.scored} window${r.scored === 1 ? '' : 's'} well paced` : 'no 5-hour window scored yet',
+    `${r.turns.toLocaleString('en-US')} turn${r.turns === 1 ? '' : 's'} · ${tokens(r.tokensOut)} tokens`,
+    `+${r.xp.toLocaleString('en-US')} XP · +${r.coinsEarned.toLocaleString('en-US')} coins`,
+  ]
+  const medals = r.badges
+    .slice(0, 6)
+    .map((_, i) => `<g transform="translate(${16 + i * 11} 142) scale(1.1)">${medalSvg(true, 1).replace(/<\/?svg[^>]*>/g, '')}</g>`)
+    .join('')
+  const when = isLive ? `week of ${shortDate(r.start)} · so far` : `week of ${shortDate(r.start)}`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_W * scale}" height="${CARD_H * scale}" viewBox="0 0 ${CARD_W} ${CARD_H}">
+  <rect x="0.5" y="0.5" width="${CARD_W - 1}" height="${CARD_H - 1}" rx="12" fill="#171717" stroke="#333"/>
+  ${text(when, 16, 24, 9, CLAWD)}
+  ${text('usage-hud', CARD_W - 16, 24, 9, dim, ' text-anchor="end"')}
+  <g transform="translate(10 40) scale(2.6)" shape-rendering="crispEdges">${clawdSvg('happy', 'idle', outfit, false, false)}</g>
+  <g transform="translate(140 0)">
+    <path d="${textPixels(level.replace(' → ', '-').replace('Lv ', 'Lv'), 0, 46, 3.2)}" fill="${COLORS.level}" shape-rendering="crispEdges"/>
+    ${text(titleOf(r.levelTo), 0, 76, 10, dim)}
+    ${rows.map((row, i) => text(row, 0, 94 + i * 14, 9.5, i === 3 ? dim : ink)).join('\n    ')}
+  </g>
+  ${medals}
+  ${text(r.badges.length ? `${r.badges.length} badge${r.badges.length === 1 ? '' : 's'} earned` : 'bragging rights, not proof', r.badges.length ? 16 + Math.min(6, r.badges.length) * 11 + 4 : 16, 151, 8, dim)}
+  ${r.badges.length ? text('bragging rights, not proof', CARD_W - 16, 151, 8, dim, ' text-anchor="end"') : ''}
+</svg>`
 }
 
 const grid4 = (g: string[], fill: string, ch: string, x: number, y: number) =>
@@ -826,6 +909,11 @@ const BADGES: Record<string, { name: string; how: string }> = {
   'fresh-start': { name: 'Fresh Start', how: 'a busy context cleared' },
   'night-owl': { name: 'Night Owl', how: 'a turn between 2 and 5am' },
   'early-bird': { name: 'Early Bird', how: 'a turn between 5 and 7am' },
+  delegator: { name: 'Delegator', how: '10 subagent turns in one session' },
+  scholar: { name: 'Scholar', how: '50 web searches' },
+  'clean-exit': { name: 'Clean Exit', how: '50 turns in a session that never passed 60% context' },
+  comeback: { name: 'Comeback', how: 'back after two weeks away' },
+  'pumpkin-patch': { name: 'Pumpkin Patch', how: 'a turn in Halloween week, Oct 25 to 31' },
 }
 
 function newProgress(): Progress {
@@ -836,7 +924,8 @@ function newProgress(): Progress {
     tokensOut: 0,
     streak: { count: 0, best: 0, restDays: 0 },
     badges: {},
-    today: { day: '', turns: 0 },
+    today: freshToday(''),
+    searches: 0,
     windows: {},
     paced: 0,
     phoenix: false,
@@ -844,14 +933,24 @@ function newProgress(): Progress {
     coinTokens: 0,
     owned: [],
     outfit: {},
+    quests: {},
   }
 }
 
-/** The saved progress, with any field an older version didn't keep filled in. */
+const freshToday = (day: string): Today => ({ day, turns: 0, tokensOut: 0, toolCalls: 0, tools: [], searches: 0, clears: 0, steady: 0 })
+
+/** The saved progress, with any field an older version didn't keep filled in, one level down too. */
 function progressOf(saved: unknown): Progress {
   const base = newProgress()
   if (!saved || typeof saved !== 'object') return base
-  return { ...base, ...(saved as Partial<Progress>) }
+  const old = saved as Partial<Progress>
+  return {
+    ...base,
+    ...old,
+    streak: { ...base.streak, ...old.streak },
+    today: { ...base.today, ...old.today },
+    quests: old.quests ?? {},
+  }
 }
 
 /** A change to the progress, the toasts it calls for, and a command's answer. */
@@ -872,26 +971,38 @@ type TurnFacts = {
   usage?: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }
   /** Tool calls so far this session, main conversation only. */
   tools: number
+  /** Since the last turn: the tools called, how many calls, and how many were web searches or fetches. */
+  recent?: { tools: string[]; calls: number; searches: number }
+  /** This session so far: subagent turns, main turns before this one, and the highest context figure. */
+  session?: { subagents: number; turns: number; ctxPeak: number }
 }
 
 function afterTurn(prev: Progress, t: TurnFacts): Step {
   const step = stepFrom(prev)
   const p = step.p
-  const day = dayOf(t.now)
+  const day = begin(step, t.now)
   p.turns += 1
   if (t.usage) {
     p.tokensIn += t.usage.input_tokens + t.usage.cache_read_input_tokens + t.usage.cache_creation_input_tokens
     p.tokensOut += t.usage.output_tokens
+    p.today.tokensOut += t.usage.output_tokens
     // Written tokens become coins, a thousand at a time; the rest waits for the next turn.
     p.coinTokens += t.usage.output_tokens
     const coins = Math.floor(p.coinTokens / COINS.perTokens)
     p.coins += coins
     p.coinTokens -= coins * COINS.perTokens
   }
+  if (t.recent) {
+    p.today.toolCalls += t.recent.calls
+    p.today.searches += t.recent.searches
+    p.searches += t.recent.searches
+    for (const name of t.recent.tools) if (!p.today.tools.includes(name) && p.today.tools.length < 100) p.today.tools.push(name)
+  }
 
   // The first turn of a day carries the streak on, spending rest days on any days missed.
   const s = p.streak
   const gap = s.lastDay ? daysBetween(s.lastDay, day) : 1
+  const away = s.lastDay ? gap - 1 : 0
   if (gap >= 1) {
     const missed = gap - 1
     if (s.lastDay && missed <= s.restDays) {
@@ -905,25 +1016,244 @@ function afterTurn(prev: Progress, t: TurnFacts): Step {
     s.best = Math.max(s.best, s.count)
     s.lastDay = day
     p.xp += XP.daily
+    if (p.week) p.week.days += 1
   }
+  if (p.week) p.week.streak = Math.max(p.week.streak, s.count)
 
-  if (p.today.day !== day) p.today = { day, turns: 0 }
   p.xp += p.today.turns < XP.turnsBeforeTired ? XP.turn : XP.tiredTurn
   p.today.turns += 1
 
-  const hour = new Date(t.now).getHours()
+  const at = new Date(t.now)
+  const hour = at.getHours()
   earn(step, 'first-steps', day)
   if (s.count >= 7) earn(step, 'on-a-roll', day)
   if (s.count >= 30) earn(step, 'unstoppable', day)
   if (hour >= 2 && hour < 5) earn(step, 'night-owl', day)
   if (hour >= 5 && hour < 7) earn(step, 'early-bird', day)
   if (t.tools >= 100) earn(step, 'marathon', day)
+  if (away >= 14) earn(step, 'comeback', day)
+  if (p.searches >= 50) earn(step, 'scholar', day)
+  if (t.session && t.session.subagents >= 10) earn(step, 'delegator', day)
+  if (t.session && t.session.turns + 1 >= 50 && t.session.ctxPeak < 60) earn(step, 'clean-exit', day)
+  if (at.getMonth() === 9 && at.getDate() >= 25) earn(step, 'pumpkin-patch', day)
   if (p.phoenix) {
     earn(step, 'phoenix', day)
     p.phoenix = false
   }
+  checkQuests(step, day)
   return step
 }
+
+// #region weeks: the calendar week, rolled over on the first change of the next
+
+/** The Monday of the week holding `day`, as `YYYY-MM-DD`. */
+function weekStartOf(day: string): string {
+  const d = new Date(`${day}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7))
+  return d.toISOString().slice(0, 10)
+}
+
+/** What the week has come to so far, in the recap's shape. */
+function weekSoFar(p: Progress, w: Week, end: string): Recap {
+  return {
+    start: w.start,
+    turns: p.turns - w.turns,
+    tokensOut: p.tokensOut - w.tokensOut,
+    xp: Math.max(0, Math.floor(p.xp - w.xp)),
+    levelFrom: levelOf(w.xp),
+    levelTo: levelOf(p.xp),
+    coinsEarned: Math.max(0, p.coins - w.coins + w.spent),
+    coinsSpent: w.spent,
+    scored: w.scored,
+    paced: w.paced,
+    streak: w.streak,
+    days: w.days,
+    badges: Object.entries(p.badges)
+      .filter(([, d]) => d >= w.start && d < end)
+      .map(([id]) => id),
+  }
+}
+
+// Every turn and reading starts here: a new day gets fresh counters, and a new week files
+// the old one as the recap (when anything happened in it) and starts counting again.
+function begin(step: Step, now: number): string {
+  const p = step.p
+  const day = dayOf(now)
+  if (p.today.day !== day) {
+    p.today = freshToday(day)
+    for (const [key, done] of Object.entries(p.quests)) if (daysBetween(done, day) > 14) delete p.quests[key]
+  }
+  const start = weekStartOf(day)
+  if (p.week?.start !== start) {
+    if (p.week && p.turns > p.week.turns) {
+      p.recap = weekSoFar(p, p.week, start)
+      step.news.push('Your week in review is ready: press "Week in review" on the band, or /usage-hud recap')
+    }
+    p.week = { start, xp: p.xp, coins: p.coins, turns: p.turns, tokensOut: p.tokensOut, spent: 0, scored: 0, paced: 0, streak: liveStreak(p, now), days: 0 }
+  }
+  return day
+}
+
+/** The recap to show: last week's until it's been seen, else this week so far. */
+function recapOf(p: Progress, now: number): { recap: Recap; isLive: boolean } | undefined {
+  if (p.recap && p.recapSeen !== p.recap.start) return { recap: p.recap, isLive: false }
+  if (p.week) return { recap: weekSoFar(p, p.week, dayOf(now + 86_400_000)), isLive: true }
+  return undefined
+}
+
+const recapDue = (p: Progress) => p.recap !== undefined && p.recapSeen !== p.recap.start
+
+function sawRecap(prev: Progress): Step {
+  const step = stepFrom(prev)
+  if (step.p.recap) step.p.recapSeen = step.p.recap.start
+  return step
+}
+
+// #endregion weeks
+
+// #region quests: three a day and one a week, the same for everyone, picked from the date
+
+type Quest = { id: string; text: string; goal: number; coins: number; unit?: string; of: (p: Progress) => number }
+
+const DAILY_QUESTS: Quest[] = [
+  { id: 'tools', text: 'Use three different tools', goal: 3, coins: 20, unit: 'tools', of: p => p.today.tools.length },
+  { id: 'steady', text: 'Finish a 5-hour window between 40 and 70%', goal: 1, coins: 40, unit: 'window', of: p => p.today.steady },
+  { id: 'clear', text: 'Clear the context before it passes 60%', goal: 1, coins: 20, unit: 'clear', of: p => p.today.clears },
+  { id: 'write', text: 'Have Claude write 20k tokens', goal: 20_000, coins: 30, unit: 'tokens', of: p => p.today.tokensOut },
+  { id: 'turns', text: 'Take 15 turns', goal: 15, coins: 20, unit: 'turns', of: p => p.today.turns },
+  { id: 'calls', text: 'Make 30 tool calls', goal: 30, coins: 20, unit: 'calls', of: p => p.today.toolCalls },
+  { id: 'search', text: 'Search the web twice', goal: 2, coins: 20, unit: 'searches', of: p => p.today.searches },
+]
+
+const WEEKLY_QUESTS: Quest[] = [
+  { id: 'paced', text: 'Five well-paced 5-hour windows this week', goal: 5, coins: 150, unit: 'windows', of: p => p.week?.paced ?? 0 },
+  { id: 'days', text: 'A turn on five days this week', goal: 5, coins: 150, unit: 'days', of: p => p.week?.days ?? 0 },
+  { id: 'write', text: 'Have Claude write 150k tokens this week', goal: 150_000, coins: 150, unit: 'tokens', of: p => (p.week ? p.tokensOut - p.week.tokensOut : 0) },
+]
+
+/** A small stable hash of a string (FNV-1a), the seed the date gives. */
+function hashOf(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619) >>> 0
+  return h
+}
+
+/** `n` of the pool in a seeded order, so a day's quests are the same on every machine. */
+function pickOf<T>(pool: T[], n: number, seed: number): T[] {
+  const list = [...pool]
+  let x = seed || 1
+  for (let i = list.length - 1; i > 0; i--) {
+    x = (Math.imul(x, 1103515245) + 12345) >>> 0
+    const j = x % (i + 1)
+    ;[list[i], list[j]] = [list[j]!, list[i]!]
+  }
+  return list.slice(0, n)
+}
+
+type Active = { quest: Quest; key: string; isWeekly: boolean }
+
+/** Today's three quests and the week's one, keyed as the done list keeps them. */
+function questsFor(day: string): Active[] {
+  const start = weekStartOf(day)
+  const daily = pickOf(DAILY_QUESTS, 3, hashOf(`day:${day}`)).map(quest => ({ quest, key: `${day}:${quest.id}`, isWeekly: false }))
+  const weekly = pickOf(WEEKLY_QUESTS, 1, hashOf(`week:${start}`)).map(quest => ({ quest, key: `w${start}:${quest.id}`, isWeekly: true }))
+  return [...daily, ...weekly]
+}
+
+type QuestView = Active & { at: number; isDone: boolean }
+
+/** Each active quest with how far along it is; counters from another day or week read as zero. */
+function questViews(p: Progress, day: string): QuestView[] {
+  const sameWeek = p.week?.start === weekStartOf(day)
+  return questsFor(day).map(a => {
+    const isDone = p.quests[a.key] !== undefined
+    const counted = a.isWeekly ? sameWeek : p.today.day === day
+    const at = isDone ? a.quest.goal : counted ? Math.min(a.quest.goal, a.quest.of(p)) : 0
+    return { ...a, at, isDone }
+  })
+}
+
+/** Pays out any quest that has just been met. */
+function checkQuests(step: Step, day: string) {
+  for (const v of questViews(step.p, day)) {
+    if (v.isDone || v.at < v.quest.goal) continue
+    step.p.quests[v.key] = day
+    step.p.coins += v.quest.coins
+    step.news.push(`Quest done: ${v.quest.text} (+${v.quest.coins} coins)`)
+  }
+}
+
+/** The band's count: today's quests done, of three. */
+function questSummary(p: Progress, day: string): { done: number; of: number } {
+  const daily = questViews(p, day).filter(v => !v.isWeekly)
+  return { done: daily.filter(v => v.isDone).length, of: daily.length }
+}
+
+/** Until the quests change: the time to local midnight. */
+function untilMidnight(now: number): number {
+  const d = new Date(now)
+  d.setHours(24, 0, 0, 0)
+  return d.getTime() - now
+}
+
+const questLine = (v: QuestView) => {
+  const progress = v.isDone ? 'done' : v.quest.goal > 1 ? `${v.at.toLocaleString('en-US')} of ${v.quest.goal.toLocaleString('en-US')}` : 'not yet'
+  return `${v.isDone ? '☑' : '☐'} ${v.quest.text} · ${progress} · +${v.quest.coins} coins`
+}
+
+function questsOf(p: Progress, now: number): string {
+  const day = dayOf(now)
+  const views = questViews(p, day)
+  const done = views.filter(v => v.isDone).length
+  return [
+    `Quests · ${done} of ${views.length} done · new ones in ${untilReset(untilMidnight(now))} · the same for everyone today`,
+    ...views.map(questLine),
+  ].join('\n')
+}
+
+// #endregion quests
+
+// #region trophies: every badge, earned or how far along it is
+
+type SessionFacts = { tools: number; subagents: number; turns: number; ctxPeak: number }
+type BadgeView = { id: string; name: string; how: string; earned?: string; progress?: { at: number; of: number; unit: string }; note?: string }
+
+/** The trophy case: each badge with the day it was earned, or how far along it is. */
+function badgeViews(p: Progress, now: number, session: SessionFacts): BadgeView[] {
+  const streak = liveStreak(p, now)
+  const weekPeak = p.windows.seven_day?.peak
+  const toward = (at: number, of: number, unit: string) => ({ at: Math.min(of, Math.max(0, Math.floor(at))), of, unit })
+  const detail: Record<string, Pick<BadgeView, 'progress' | 'note'>> = {
+    'on-a-roll': { progress: toward(streak, 7, 'days') },
+    unstoppable: { progress: toward(streak, 30, 'days') },
+    'perfect-pace': { progress: toward(p.paced, 3, 'windows') },
+    marathon: { progress: toward(session.tools, 100, 'calls this session') },
+    'deep-thinker': { progress: toward(session.ctxPeak, 80, '% context this session') },
+    delegator: { progress: toward(session.subagents, 10, 'subagent turns this session') },
+    scholar: { progress: toward(p.searches, 50, 'searches') },
+    'clean-exit': session.ctxPeak >= 60 ? { note: 'context passed 60% this session; try the next one' } : { progress: toward(session.turns, 50, 'turns this session') },
+    'close-call': weekPeak === undefined ? {} : { note: `this week has peaked at ${Math.round(weekPeak)}%` },
+    zen: weekPeak === undefined ? {} : { note: `this week has peaked at ${Math.round(weekPeak)}%` },
+    'pumpkin-patch': { note: 'Oct 25 to 31' },
+  }
+  return Object.entries(BADGES).map(([id, b]) => ({ id, ...b, earned: p.badges[id], ...(p.badges[id] ? {} : detail[id]) }))
+}
+
+function badgesOf(p: Progress, now: number, session: SessionFacts): string {
+  const views = badgeViews(p, now, session)
+  const earned = views.filter(v => v.earned).length
+  const line = (v: BadgeView) => {
+    const state = v.earned
+      ? `earned ${shortDate(v.earned)}`
+      : v.progress
+        ? `${bar((v.progress.at / v.progress.of) * 100, 6)} ${v.progress.at.toLocaleString('en-US')} of ${v.progress.of} ${v.progress.unit}`
+        : (v.note ?? 'not yet')
+    return `${v.earned ? '★' : '☆'} ${v.name} · ${v.how} · ${state}`
+  }
+  return [`Badges · ${earned} of ${views.length} · each worth ${XP.badge} XP and ${COINS.badge} coins`, ...views.map(line)].join('\n')
+}
+
+// #endregion trophies
 
 function maxedOut(step: Step, kind: string, day: string) {
   const gain = kind === 'seven_day' ? XP.maxedWeek : kind === 'five_hour' ? XP.maxedSession : 0
@@ -938,9 +1268,12 @@ function scoreWindow(step: Step, kind: string, peak: number, day: string) {
   const p = step.p
   if (peak >= 100) p.phoenix = true
   if (kind === 'five_hour') {
+    if (p.week) p.week.scored += 1
+    if (peak >= 40 && peak <= 70) p.today.steady += 1
     if (peak >= 60 && peak < 100) {
       p.xp += XP.paced
       p.paced += 1
+      if (p.week) p.week.paced += 1
       step.news.push(`Nicely paced session window (+${XP.paced} XP)`)
       if (p.paced >= 3) earn(step, 'perfect-pace', day)
     } else {
@@ -958,7 +1291,7 @@ function scoreWindow(step: Step, kind: string, peak: number, day: string) {
 function afterMeasure(prev: Progress, snap: Snapshot, now: number, prevCtx?: number): Step {
   const step = stepFrom(prev)
   const p = step.p
-  const day = dayOf(now)
+  const day = begin(step, now)
   for (const l of snap.limits) {
     if (l.isSaved) continue
     // A reading whose window has already ended is left from before the reset; wait for a fresh one.
@@ -979,6 +1312,9 @@ function afterMeasure(prev: Progress, snap: Snapshot, now: number, prevCtx?: num
   }
   if (snap.ctxPct >= 80) earn(step, 'deep-thinker', day)
   if (prevCtx !== undefined && prevCtx > 50 && snap.ctxPct < 10) earn(step, 'fresh-start', day)
+  // A context cleared while it still had room: the figure drops from somewhere under 60% to near nothing.
+  if (prevCtx !== undefined && prevCtx >= 20 && prevCtx < 60 && snap.ctxPct < 10) p.today.clears += 1
+  checkQuests(step, day)
   return step
 }
 
@@ -998,8 +1334,9 @@ function statsOf(p: Progress, now: number): string {
     `Turns: ${p.turns.toLocaleString('en-US')} · tokens: ${tokens(p.tokensIn)} in, ${tokens(p.tokensOut)} out`,
     `Coins: ${p.coins.toLocaleString('en-US')} · wearing: ${worn.join(', ') || 'nothing'} (/usage-hud shop)`,
     next ? `Next: ${next.title === titleOf(level) ? '' : `${next.title}, `}${next.item ? nameOf(next.item) : ''} at level ${next.at}` : '',
-    `Badges ${earned.length}/${all.length}: ${earned.join(', ') || 'none yet'}`,
+    `Badges ${earned.length}/${all.length}: ${earned.join(', ') || 'none yet'} (/usage-hud badges)`,
     left.length ? `Still to earn: ${left.join('; ')}` : '',
+    `Quests today: ${questSummary(p, dayOf(now)).done}/3 done (/usage-hud quests)${recapDue(p) ? ' · your week in review is ready (/usage-hud recap)' : ''}`,
   ]
     .filter(Boolean)
     .join('\n')
@@ -1046,6 +1383,7 @@ function bought(prev: Progress, arg: string): Step {
   else if (p.coins < item.price) step.reply = `The ${item.name} costs ${item.price.toLocaleString('en-US')} coins and you have ${p.coins.toLocaleString('en-US')}.`
   else {
     p.coins -= item.price
+    if (p.week) p.week.spent += item.price
     p.owned.push(id)
     p.outfit[item.slot] = id
     step.reply = `Bought the ${item.name} for ${item.price.toLocaleString('en-US')} coins, and Clawd's wearing it. ${p.coins.toLocaleString('en-US')} coins left.`
@@ -1203,9 +1541,16 @@ async function play($: EngineInterface, change: (p: Progress, now: number) => St
   return settled
 }
 
-// This session's own counts, for the badges that are about one session.
+// This session's own counts, for the badges and quests that are about one session or one turn.
 let toolCalls = 0
+let subTurns = 0
+let mainTurns = 0
+let ctxPeak = 0
 let lastCtx: number | undefined
+// Since the last main turn finished: which tools were called, how often, and how many searched the web.
+let recent = { tools: new Set<string>(), calls: 0, searches: 0 }
+
+const sessionFacts = () => ({ tools: toolCalls, subagents: subTurns, turns: mainTurns, ctxPeak })
 
 async function take($: EngineInterface, fresh: Snapshot) {
   const snap = await withSaved($, fresh)
@@ -1225,6 +1570,7 @@ async function take($: EngineInterface, fresh: Snapshot) {
   })
   const prevCtx = lastCtx
   lastCtx = snap.ctxPct
+  ctxPeak = Math.max(ctxPeak, snap.ctxPct)
   await play($, (p, now) => afterMeasure(p, snap, now, prevCtx))
 }
 
@@ -1331,12 +1677,90 @@ async function setActivity($: EngineInterface, next: Activity) {
   await update($, activity, () => next)
 }
 
+const RECAP = 'recap'
+const BADGES_PANE = 'badges'
+const QUESTS = 'quests'
+const NO_WEEK_YET = 'Nothing to show yet: your first week starts with your next turn.'
+
+// Opens one of the panes where the person asked for it; `fallback` is the same thing as text.
+async function openPane($: EngineInterface, id: string, title: string, rows: number, fallback: string): Promise<string> {
+  const opened = await $.ui.open({ id, title, focus: true, closeOnEscape: true, rows }).catch(() => undefined)
+  if (opened?.isPlaced) return `Opened ${title.toLowerCase()}. Esc closes it.`
+  return fallback
+}
+
+// A press on Save card: the answer as a toast.
+async function savePress($: EngineInterface) {
+  $.ui.toast(await saveCard($), { timeoutMs: 6000 })
+}
+
+// Marks the recap seen (the band's button goes) and closes its pane.
+async function closeRecap($: EngineInterface) {
+  await play($, sawRecap)
+  await $.ui.close({ id: RECAP }).catch(() => undefined)
+}
+
+// Writes the week's card as an SVG in the Downloads folder (or home), and as a PNG where the
+// machine can rasterize one. Only this card's figures leave the store, and only to a local file.
+async function saveCard($: EngineInterface): Promise<string> {
+  const p = progressOf(await $.store.get(PROGRESS))
+  const shown = recapOf(p, await $.clock.now())
+  if (!shown) return NO_WEEK_YET
+  const svg = cardSvg(shown.recap, outfitOf(p, levelOf(p.xp)), 2, shown.isLive)
+  const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
+  if (!home) return "Couldn't find your home folder to save the card into."
+  const downloads = `${home}/Downloads`
+  const dir = (await $.fs.exists(downloads).catch(() => false)) ? downloads : home
+  const name = `usage-hud-week-${shown.recap.start}`
+  try {
+    await $.fs.write(`${dir}/${name}.svg`, svg)
+  } catch (err) {
+    return `Couldn't save the card: ${err instanceof Error ? err.message : String(err)}`
+  }
+  const png = await rasterize($, `${dir}/${name}.svg`, `${dir}/${name}.png`, dir)
+  const where = dir === downloads ? 'your Downloads folder' : dir
+  return png ? `Saved ${name}.png and ${name}.svg to ${where}.` : `Saved ${name}.svg to ${where} (no PNG converter found on this machine).`
+}
+
+// A PNG from the SVG with whatever the machine has: rsvg-convert, Quick Look on macOS, or ImageMagick.
+async function rasterize($: EngineInterface, svg: string, png: string, dir: string): Promise<boolean> {
+  const run = async (argv: string[]) => {
+    try {
+      return (await $.process.run(argv, { timeoutMs: 20_000 })).exitCode === 0
+    } catch {
+      return false
+    }
+  }
+  if (await run(['rsvg-convert', '-w', '1200', '-o', png, svg])) return true
+  // Quick Look writes `<name>.svg.png` into the folder; move it into place.
+  if ((await run(['qlmanage', '-t', '-s', '1200', '-o', dir, svg])) && (await $.fs.exists(`${svg}.png`).catch(() => false))) {
+    return run(['mv', '-f', `${svg}.png`, png])
+  }
+  if (await run(['magick', svg, '-resize', '1200x', png])) return true
+  return run(['convert', svg, '-resize', '1200x', png])
+}
+
+/** The week as lines of text: the recap's fallback and the pane's detail. */
+function recapLines(r: Recap, isLive: boolean): string[] {
+  const names = r.badges.map(id => BADGES[id]?.name ?? id)
+  return [
+    `Week of ${shortDate(r.start)}${isLive ? ', so far' : ''}`,
+    `Level ${r.levelFrom === r.levelTo ? r.levelTo : `${r.levelFrom} → ${r.levelTo}`}, ${titleOf(r.levelTo)} · +${r.xp.toLocaleString('en-US')} XP`,
+    `Streak: up to ${r.streak} day${r.streak === 1 ? '' : 's'} · active ${r.days} day${r.days === 1 ? '' : 's'}`,
+    r.scored ? `Pacing: ${r.paced} of ${r.scored} 5-hour window${r.scored === 1 ? '' : 's'} well paced` : 'Pacing: no 5-hour window finished yet',
+    `Turns: ${r.turns.toLocaleString('en-US')} · ${tokens(r.tokensOut)} tokens written`,
+    `Coins: +${r.coinsEarned.toLocaleString('en-US')} earned, ${r.coinsSpent.toLocaleString('en-US')} spent`,
+    `Badges: ${names.join(', ') || 'none this week'}`,
+  ]
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'usage-hud',
-      description: "Show or hide the usage band; `stats` for Clawd's level, `shop` to spend coins on outfits, `update` to get the newest version",
-      argumentHint: '[stats | shop | shop list | buy <item> | wear <item> | remove <item> | update]',
+      description:
+        'Show or hide the usage band; `recap` for your week and its share card, `badges` and `quests` for the trophy case and today\'s quests, `stats`, `shop` to spend coins on outfits, `update` to get the newest version',
+      argumentHint: '[recap | card | badges | quests | stats | shop | shop list | buy <item> | wear <item> | remove <item> | update]',
     })
     try {
       const manifest = JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`)) as { version?: string }
@@ -1382,6 +1806,9 @@ export const register: Register = on => {
   on('tool.call', async ($, e, next) => {
     if (!e.agentId) {
       toolCalls += 1
+      recent.calls += 1
+      recent.tools.add(e.tool)
+      if (e.tool === 'WebSearch' || e.tool === 'WebFetch') recent.searches += 1
       await setActivity($, 'typing')
     }
     return next(e)
@@ -1390,9 +1817,17 @@ export const register: Register = on => {
   // A subagent's turn ending must not put Clawd down while the main turn still runs; a turn
   // that made no request (interrupted before the first response, or dead on an API error) is no turn.
   on('turn.complete', async ($, e, next) => {
-    if (e.agentId) return next(e)
+    if (e.agentId) {
+      if (e.usage) subTurns += 1
+      return next(e)
+    }
     await setActivity($, 'idle')
-    if (e.usage) await play($, (p, now) => afterTurn(p, { now, usage: e.usage, tools: toolCalls }))
+    if (e.usage) {
+      const facts = { now: 0, usage: e.usage, tools: toolCalls, recent: { ...recent, tools: [...recent.tools] }, session: sessionFacts() }
+      recent = { tools: new Set(), calls: 0, searches: 0 }
+      mainTurns += 1
+      await play($, (p, now) => afterTurn(p, { ...facts, now }))
+    }
     return next(e)
   })
 
@@ -1405,6 +1840,17 @@ export const register: Register = on => {
     const [verb, ...rest] = e.args.trim().split(/\s+/)
     if (verb === 'stats') {
       return { text: statsOf(progressOf(await $.store.get(PROGRESS)), await $.clock.now()) }
+    }
+    // The week, the trophy case and the quests each open as a pane; the text stands in where one can't be drawn.
+    if (verb === 'recap' || verb === 'badges' || verb === 'quests') {
+      const p = progressOf(await $.store.get(PROGRESS))
+      const now = await $.clock.now()
+      if (verb === 'recap') return { text: await openPane($, RECAP, 'Your week', 16, recapOf(p, now) ? recapLines(recapOf(p, now)!.recap, recapOf(p, now)!.isLive).join('\n') : NO_WEEK_YET) }
+      if (verb === 'badges') return { text: await openPane($, BADGES_PANE, 'Badges', 20, badgesOf(p, now, sessionFacts())) }
+      return { text: await openPane($, QUESTS, 'Quests', 8, questsOf(p, now)) }
+    }
+    if (verb === 'card') {
+      return { text: await saveCard($) }
     }
     if (verb === 'update') {
       const latest = await checkForUpdate($, true)
@@ -1544,6 +1990,173 @@ export const register: Register = on => {
     )
   })
 
+  // The week: last week's recap until it's been seen, else this week so far, with the share card.
+  on('ui.render', { component: 'Pane', requestId: RECAP }, async ($, e) => {
+    const p = (await read($, game)).progress ?? progressOf(await $.store.get(PROGRESS))
+    const now = await $.clock.now()
+    const shown = recapOf(p, now)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    if (!shown) {
+      return (
+        <Box padding={1}>
+          <Text dimColor>{NO_WEEK_YET}</Text>
+        </Box>
+      )
+    }
+    const { recap: r, isLive } = shown
+    const [title, ...lines] = recapLines(r, isLive)
+    const buttons = (
+      <Box flexDirection="row" flexWrap="wrap" gap={1}>
+        <Button key="save" label="Save card" variant="primary" hotkey="s" onPress={() => savePress($)} />
+        <Button key="done" label="Done" role="dismiss" hotkey="d" onPress={() => closeRecap($)} />
+      </Box>
+    )
+    const hint = <Text dimColor>Save card writes a PNG and an SVG of this week to your Downloads folder, to post wherever you like.</Text>
+    if (e.surface === 'terminal') {
+      return (
+        <Box flexDirection="column" gap={1}>
+          <Text>
+            <Text color={CLAWD}>{FACES.happy}</Text>
+            <Text bold>{`  ${title}`}</Text>
+          </Text>
+          <Box flexDirection="column">
+            {lines.map(line => (
+              <Text key={line}>{line}</Text>
+            ))}
+          </Box>
+          {buttons}
+          {hint}
+        </Box>
+      )
+    }
+    const { Svg } = $.ui.resolve(e)
+    const columns = e.props.bodyColumns || 100
+    const width = Math.min(CARD_W * 2, Math.max(240, Math.round(columns * PX_PER_COLUMN) - 40))
+    return (
+      <Box flexDirection="column" gap={1} padding={1}>
+        <Svg
+          source={cardSvg(r, outfitOf(p, levelOf(p.xp)), 2, isLive)}
+          alt={`Week card: ${lines.slice(0, 2).join(', ')}`}
+          width={width}
+          height={Math.round((width * CARD_H) / CARD_W)}
+        />
+        <Box flexDirection="column">
+          <Text bold>{title}</Text>
+          {lines.map(line => (
+            <Text key={line} dimColor>
+              {line}
+            </Text>
+          ))}
+        </Box>
+        {buttons}
+        {hint}
+      </Box>
+    )
+  })
+
+  // The trophy case: every badge as a medal, lit once earned, with how far along the rest are.
+  on('ui.render', { component: 'Pane', requestId: BADGES_PANE }, async ($, e) => {
+    const p = (await read($, game)).progress ?? progressOf(await $.store.get(PROGRESS))
+    const views = badgeViews(p, await $.clock.now(), sessionFacts())
+    const earned = views.filter(v => v.earned).length
+    const state = (v: BadgeView) =>
+      v.earned
+        ? `earned ${shortDate(v.earned)}`
+        : v.progress
+          ? `${bar((v.progress.at / v.progress.of) * 100, 6)} ${v.progress.at.toLocaleString('en-US')} of ${v.progress.of} ${v.progress.unit}`
+          : (v.note ?? 'not yet')
+    const header = `Badges · ${earned} of ${views.length}`
+    const worth = `each worth ${XP.badge} XP and ${COINS.badge} coins`
+    if (e.surface === 'terminal') {
+      const { Box, Text } = $.ui.resolve(e)
+      return (
+        <Box flexDirection="column" gap={1}>
+          <Text>
+            <Text bold>{header}</Text>
+            <Text dimColor>{` · ${worth}`}</Text>
+          </Text>
+          <Box flexDirection="column">
+            {views.map(v => (
+              <Text key={v.id}>
+                <Text color={v.earned ? 'yellow' : undefined} dimColor={!v.earned}>{`${v.earned ? '★' : '☆'} ${v.name}`}</Text>
+                <Text dimColor>{` · ${v.how} · ${state(v)}`}</Text>
+              </Text>
+            ))}
+          </Box>
+        </Box>
+      )
+    }
+    const { Box, Svg, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column" gap={1} padding={1}>
+        <Box flexDirection="column">
+          <Text bold>{header}</Text>
+          <Text dimColor>{worth}</Text>
+        </Box>
+        <Box flexDirection="row" flexWrap="wrap" gap={1}>
+          {views.map(v => (
+            <Box key={`badge:${v.id}`} flexDirection="column" alignItems="center" gap={1} padding={1} borderStyle="round" borderDimColor={!v.earned} borderColor={v.earned ? COLORS.golden : undefined}>
+              <Svg source={medalSvg(!!v.earned, 4)} alt={v.earned ? `${v.name}, earned` : `${v.name}, not yet`} width={28} height={36} />
+              <Text bold dimColor={!v.earned}>
+                {v.name}
+              </Text>
+              <Text dimColor>{v.how}</Text>
+              <Text color={v.earned ? COLORS.golden : undefined} dimColor={!v.earned}>
+                {state(v)}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+    )
+  })
+
+  // Today's quests, the same for everyone: a box per quest, ticked when it's met.
+  on('ui.render', { component: 'Pane', requestId: QUESTS }, async ($, e) => {
+    const p = (await read($, game)).progress ?? progressOf(await $.store.get(PROGRESS))
+    const now = await $.clock.now()
+    const views = questViews(p, dayOf(now))
+    const done = views.filter(v => v.isDone).length
+    const { Box, Text } = $.ui.resolve(e)
+    const progress = (v: QuestView) =>
+      v.isDone ? 'done' : v.quest.goal > 1 ? `${v.at.toLocaleString('en-US')} of ${v.quest.goal.toLocaleString('en-US')}${v.quest.unit ? ` ${v.quest.unit}` : ''}` : 'not yet'
+    const isTerminal = e.surface === 'terminal'
+    const row = (v: QuestView) => (
+      <Text key={v.key}>
+        <Text color={v.isDone ? 'green' : undefined} dimColor={!v.isDone}>{v.isDone ? '☑ ' : '☐ '}</Text>
+        <Text dimColor={v.isDone} strikethrough={v.isDone}>{v.quest.text}</Text>
+        <Text dimColor>{` · ${progress(v)}`}</Text>
+        <Text color="yellow" dimColor={v.isDone}>{` +${v.quest.coins} coins`}</Text>
+        {v.isWeekly ? <Text dimColor> · this week</Text> : null}
+      </Text>
+    )
+    return (
+      <Box flexDirection="column" gap={1} padding={isTerminal ? 0 : 1}>
+        <Box flexDirection="column">
+          <Text bold>{`Quests · ${done} of ${views.length} done`}</Text>
+          <Text dimColor>{`New ones in ${untilReset(untilMidnight(now))} · everyone gets the same quests today · coins on completion`}</Text>
+        </Box>
+        {isTerminal ? (
+          <Box flexDirection="column">{views.map(row)}</Box>
+        ) : (
+          <Box flexDirection="column" gap={1}>
+            {views.map(v => (
+              <Box key={`quest:${v.key}`} paddingX={1} borderStyle="round" borderDimColor={!v.isDone} borderColor={v.isDone ? TONES.ok : undefined}>
+                {row(v)}
+              </Box>
+            ))}
+          </Box>
+        )}
+      </Box>
+    )
+  })
+
+  // Esc or the close mark on the recap counts as having seen it.
+  on('ui.close', { id: RECAP }, async ($, e, next) => {
+    if (e.origin.kind === 'person') void play($, sawRecap)
+    return next(e)
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || (await read($, isHidden))) return next(e)
     const { cur, prev } = await read($, gauges)
@@ -1552,10 +2165,13 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const list = tanksOf(cur, prev, now)
     const { progress, burst } = await read($, game)
-    const view = progress ? gameViewOf(progress, now, burst) : undefined
+    const view = progress ? { ...gameViewOf(progress, now, burst), quests: questSummary(progress, dayOf(now)) } : undefined
     const { latest, phase } = await read($, updates)
     const updateLabel = !latest ? undefined : phase === 'installing' ? 'updating…' : phase === 'restart' ? `restart for ${latest}` : undefined
     const onUpdate = async () => $.ui.toast(await installUpdate($))
+    // Last week's recap, offered until it's been opened.
+    const recapLabel = progress && recapDue(progress) ? 'Week in review' : undefined
+    const onRecap = () => openPane($, RECAP, 'Your week', 16, '')
 
     // Every surface but the terminal (desktop, VS Code, the Claude mobile app) draws Svg.
     if (e.surface !== 'terminal') {
@@ -1563,7 +2179,10 @@ export const register: Register = on => {
       const columns = e.props.bodyColumns || e.viewport?.columns || 100
       // The image can't take a press, so the refresh control is a real Button beside it.
       const offer = latest && phase === 'idle' ? `Update to ${latest}` : updateLabel
-      const width = Math.max(160, Math.round(columns * PX_PER_COLUMN) - REFRESH_W - (offer ? offer.length * 7 + 28 : 0))
+      const width = Math.max(
+        160,
+        Math.round(columns * PX_PER_COLUMN) - REFRESH_W - (offer ? offer.length * 7 + 28 : 0) - (recapLabel ? recapLabel.length * 7 + 28 : 0),
+      )
       // Drawn as an image, not an interactive frame: it stays transparent, and SMIL still plays.
       return (
         <Box flexDirection="row" alignItems="center" gap={1}>
@@ -1573,6 +2192,7 @@ export const register: Register = on => {
             width={width}
             height={HEIGHT}
           />
+          {recapLabel ? <Button key="recap" label={recapLabel} variant="secondary" onPress={onRecap} /> : null}
           {latest && phase === 'idle' ? (
             <Button key="update" label={`Update to ${latest}`} variant="primary" onPress={onUpdate} />
           ) : updateLabel ? (
@@ -1594,15 +2214,17 @@ export const register: Register = on => {
       const xpBar = view ? bar(view.frac * 100, 3) : ''
       const coins = view?.coins !== undefined ? `●${coinsLabel(view.coins)}` : ''
       const flame = view && view.streak >= 3 ? `🔥${view.streak}` : ''
+      const quests = view?.quests && view.quests.of > 0 ? `${view.quests.done >= view.quests.of ? '☑' : '☐'}${view.quests.done}/${view.quests.of}` : ''
       const gameWidth = (g: GameFit) =>
         !view || g === 'none'
           ? 0
-          : level.length + 1 + xpBar.length + (coins ? coins.length + 1 : 0) + 2 + (g === 'full' && flame ? flame.length + 2 : 0)
+          : level.length + 1 + xpBar.length + (coins ? coins.length + 1 : 0) + 2 + (g === 'full' && flame ? flame.length + 2 : 0) + (g === 'full' && quests ? quests.length + 2 : 0)
       // Fit the row to the terminal: give up the streak, the level, the long note, the cost,
       // the short note, then the bars.
       // The update offer is never given up: it sits at the right, and the rest fits around it.
       const offer = latest && phase === 'idle' ? `u: update ${latest}` : updateLabel
-      const cols = (e.props.bodyColumns || e.viewport?.columns || 80) - (offer ? offer.length + 2 : 0)
+      const recapOffer = recapLabel ? 'w: week in review' : undefined
+      const cols = (e.props.bodyColumns || e.viewport?.columns || 80) - (offer ? offer.length + 2 : 0) - (recapOffer ? recapOffer.length + 2 : 0)
       const figures = (bars: boolean) => list.reduce((w, t) => w + t.tag.length + (bars ? 6 : 0) + 5 + 2, 0)
       const widthOf = (bars: boolean, note: string | undefined, cost: string | undefined, g: GameFit) =>
         face.length + 2 + gameWidth(g) + figures(bars) + (cost ? cost.length + 2 : 0) + (note ? note.length + 2 : 0) + 3
@@ -1629,6 +2251,7 @@ export const register: Register = on => {
               <Text color="magenta" dimColor>{xpBar}</Text>
               {coins ? <Text color="yellow" dimColor>{` ${coins}`}</Text> : null}
               {g === 'full' && flame ? <Text dimColor>{`  ${flame}`}</Text> : null}
+              {g === 'full' && quests ? <Text dimColor>{`  ${quests}`}</Text> : null}
             </Text>
           ) : null}
           {list.map(t => (
@@ -1640,6 +2263,7 @@ export const register: Register = on => {
           ))}
           {cost ? <Text dimColor>{cost}</Text> : null}
           {note ? <Text color={color(worst.pct)}>{note}</Text> : null}
+          {recapLabel ? <Button key="recap" label="week in review" plain hotkey="w" onPress={onRecap} /> : null}
           {latest && phase === 'idle' ? (
             <Button key="update" label={`update ${latest}`} plain hotkey="u" onPress={onUpdate} />
           ) : updateLabel ? (

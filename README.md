@@ -60,12 +60,26 @@ The crab earns XP as you work and levels up. The level, a thin bar toward the ne
 - **Pacing pays:** a 5-hour window that peaks at 60–99% earns 100 XP, one at 30–59% earns 40.
 - **Maxing out pays too:** the moment a limit reaches 100% you get 60 XP for the 5-hour window or 150 for the weekly one, once per window.
 - **Streaks:** each day with a turn adds one. Every 7 days earns a rest day (you can hold 2), which covers a day off.
-- **Badges:** thirteen to find, like Close Call (a week that peaked at 95–99%), Maxed Out, Zen (a week under 50%) and Night Owl. Each is worth 50 XP.
+- **Badges:** eighteen to find, like Close Call (a week that peaked at 95–99%), Maxed Out, Zen (a week under 50%) and Night Owl. Each is worth 50 XP; `/usage-hud badges` shows how close you are to the rest.
 - **Unlocks:** a scarf at level 3, then a beanie (5), sunglasses (10), a hard hat (15), a cape (20), a wizard hat (30) and a golden shell (50). The newest unlock goes on by itself, unless you picked something else for that slot or took it off.
 
 Level `L` needs `50 × L × (L − 1)` XP in all, so daily use reaches level 10 in about a week and level 50 in about seven months. Progress counts from when you install the mod and is shared by all your sessions and projects. (Two sessions finishing a turn in the very same instant can drop one turn's XP; the store has no atomic update.)
 
 <img src="docs/levels/level-30.svg" alt="The crab in a wizard hat beside Lv30 and a 60-day streak" width="100%">
+
+## Your week, badges and quests
+
+Three panels open from `/usage-hud`, each a thing to click through rather than a wall of text.
+
+**`/usage-hud recap`: your week.** On the first turn of a new week the band grows a **Week in review** button. It opens last week in one card: level gained, streak, how many 5-hour windows you paced well, turns and tokens, coins earned and spent, and the badges you picked up. **Save card** writes that card to your Downloads folder as a PNG (where the machine has `rsvg-convert`, Quick Look on macOS, or ImageMagick) and as an SVG, to post wherever you like. Nothing is sent anywhere; the card is yours to share or not. Mid-week, the same command shows the week so far.
+
+<p align="center">
+  <img src="docs/card.svg" alt="The week card: the crab in a hard hat beside Lv 14 to 15, Builder, a 41-day streak, 4 of 5 windows well paced, 212 turns and 218k tokens, three badge medals, and the footer: bragging rights, not proof" width="600">
+</p>
+
+**`/usage-hud badges`: the trophy case.** Every badge as a pixel medal, lit once it is earned, with a bar toward the ones you are still working on (12 of 30 days, 64 of 100 tool calls). There are eighteen now, including Delegator (10 subagent turns in one session), Scholar (50 web searches), Clean Exit (50 turns in a session that never passed 60% context), Comeback (back after two weeks away) and Pumpkin Patch (a turn in Halloween week).
+
+**`/usage-hud quests`: three small goals a day and one a week**, picked from the calendar date, so everyone gets the same ones with no server involved. Things like *use three different tools*, *finish a 5-hour window between 40 and 70%*, *clear the context before it passes 60%*, or *a turn on five days this week*. Each pays coins when it is met, and the band shows a small `1/3` beside the streak while there is room.
 
 ## The shop
 

@@ -8,8 +8,8 @@ A Claude Code mod (a plugin of function hooks, plugin name `usage-hud`) that dra
 - `hooks/hooks.json`: lists the one hooks module.
 - `hooks/register.tsx`: the whole mod.
 - `types/index.d.ts`: the contract for the values the mod keeps in `$.state` (`gauges`, `isHidden`, `activity`, `game`) and the saved `Progress`.
-- `tests/levels.test.ts`, `tests/update.test.ts`: `claude plugin test .` runs them.
-- `scripts/render-docs.ts`: renders `docs/banner.svg` and `docs/states/*.svg` for the README.
+- `tests/*.test.ts` (levels, shop, update, week, badges, quests): `claude plugin test .` runs them.
+- `scripts/render-docs.ts`: renders `docs/banner.svg`, `docs/card.svg`, `docs/states/*.svg` and `docs/levels/*.svg` for the README. Node 22 needs `--experimental-strip-types`.
 - `.claude-plugin/types/`: type files the engine writes for editors; ignored by its own `.gitignore`.
 
 ## How it works
@@ -34,7 +34,9 @@ The update check compares `plugin.json`'s `version` with git tags, so a release 
 - **The first frame must be right on its own.** SMIL may not run in image mode on every surface, so nothing essential is hidden at t=0: lit cells are drawn lit and the reveal is a white flash on top. Very short animations (1ms) and `<set>` didn't fire in testing; use `<animate>` with `calcMode="discrete"`.
 - **Width:** the desktop reports the band in code-font cells; `PX_PER_COLUMN` (7.8) turns that into pixels. Adjust it if the band ends short of the edge or overflows.
 - **Narrow bands:** `planOf()` picks the richest layout that fits and gives things up in a fixed order (long note, cost, a little bar length, short note, more bar length, the bars, then all but the highest figure), so nothing ever overlaps. Bars stop growing at `MAX_BAR`; extra room goes between the figures. The terminal branch does the same by character count. Check any layout change across widths from about 180 to 1800px.
-- **Helpers that take `$` must be top-level function declarations.** `claude plugin validate` follows `$` only into those (`take`, `withSaved`, `refresh`, `setActivity`).
+- **Helpers that take `$` must be top-level function declarations.** `claude plugin validate` follows `$` only into those (`take`, `withSaved`, `refresh`, `setActivity`, `openPane`, `saveCard`, `rasterize`, `closeRecap`).
+- **`$.fs.write` is text only**, so the share card is an SVG first and a PNG only through a local converter. The card has no SMIL and no `<set>`, so rasterizers draw it as a browser does.
+- **`progressOf()` fills nested fields too** (`streak`, `today`, `quests`): a new counter inside `today` must have a default in `freshToday()` or old stores produce `NaN`.
 - **Clawd's scenes:** each mood is a small scene with one slow-moving prop (headphones and notes, coffee and steam, a ticking clock, flames, Z's), and props on his right give way to the thought bubble while Claude thinks. Positions animated with `animateTransform` also get a matching `transform` attribute, so a still frame puts them in the right place.
 - **Calm by design:** the user asked for flat 2D cells, muted colors (`TONES`) and very little motion. Clawd mostly holds still, with one short beat every few seconds; keep new animation in that spirit.
 
@@ -49,6 +51,15 @@ The update check compares `plugin.json`'s `version` with git tags, so a release 
 - Coins: 1 per 1,000 written tokens (the remainder carries in `coinTokens`), 100 per level-up (added in `play()`), 25 per badge. Cache tokens don't count, or prices would spiral.
 - `ITEMS` is the one catalog: level unlocks have no `price`. Each item has a slot; `outfitOf()` fills every slot with its newest level unlock unless `outfit` picks an owned item or `none`. Buddies sit left of Clawd and step aside for the panic flames.
 - Shop commands (`bought`, `dressed`, `undressed`) run inside `play()` so a purchase can't race a turn's write.
+
+## Weeks, badges and quests
+
+- Every turn and reading goes through `begin()` first (`#region weeks`): a new local day gets fresh `today` counters, and a new calendar week (Monday start, `weekStartOf`) files the old `week` as `recap` via `weekSoFar()` when it had any turns, then starts a new `week`. `week` keeps the totals at its start, so the week's figures are differences; only `spent`, `scored`, `paced`, `streak` and `days` are counted as they happen.
+- `recapOf()` picks what the recap pane and `cardSvg()` show: last week's recap until `recapSeen` matches it, else the week so far (`isLive`). The band offers a `Week in review` Button (key `recap`) while `recapDue()`; `Done`, Esc or the close mark marks it seen (`sawRecap`, also from the `ui.close` hook).
+- `saveCard()` writes `usage-hud-week-<monday>.svg` to `~/Downloads` (or home) with `$.fs.write`, which takes text only, then `rasterize()` tries `rsvg-convert`, `qlmanage` (macOS Quick Look, which writes `<name>.svg.png`, then `mv`), `magick` and `convert` for a PNG. `/usage-hud card` saves without opening the pane.
+- Quests (`#region quests`): `questsFor(day)` picks 3 of `DAILY_QUESTS` and 1 of `WEEKLY_QUESTS` with a seeded shuffle of the date (`hashOf`, `pickOf`), so every machine gets the same ones. Progress reads `p.today` and `p.week`; `checkQuests()` runs at the end of `afterTurn` and `afterMeasure` and pays coins once per key (`day:id`, `w<monday>:id`) in `p.quests`, pruned after 14 days. The band's cluster shows `done/3` (daily only) via `GameView.quests`, in the `full` fit only.
+- Per-turn facts come from module counters: `recent` (tools, calls and web searches since the last main turn, flushed into `afterTurn`), `subTurns`, `mainTurns` and `ctxPeak` (`sessionFacts()`). Those feed Delegator, Scholar, Clean Exit and the badge progress bars in `badgeViews()`.
+- Pane ids: `shop`, `recap`, `badges`, `quests`; `openPane()` opens one where the person asked and returns the text fallback otherwise.
 
 ## Mood thresholds
 
