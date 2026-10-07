@@ -10,6 +10,7 @@ A Claude Code mod (a plugin of function hooks, plugin name `usage-hud`) that dra
 - `types/index.d.ts`: the contract for the values the mod keeps in `$.state` (`gauges`, `isHidden`, `activity`, `game`) and the saved `Progress`.
 - `tests/levels.test.ts`, `tests/update.test.ts`: `claude plugin test .` runs them.
 - `scripts/render-docs.ts`: renders `docs/banner.svg` and `docs/states/*.svg` for the README.
+- `website/`: the showcase page. `website/site/` is static and draws with the mod's own code (`hud.js`, generated from a release commit by `node website/build/hud.mjs`); `website/test/` holds its Playwright checks. See `website/README.md`.
 - `.claude-plugin/types/`: type files the engine writes for editors; ignored by its own `.gitignore`.
 
 ## How it works
