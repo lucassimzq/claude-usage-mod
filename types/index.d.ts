@@ -23,6 +23,12 @@ export type Snapshot = {
 /** What Clawd is doing while a turn runs: thinking (bubble), or writing and using tools (laptop). */
 export type Activity = 'idle' | 'thinking' | 'typing'
 
+/**
+ * When Clawd last jumped from the band to the spinner (a turn began) and back (it ended),
+ * so the redraws right after play the jump and later ones draw him settled.
+ */
+export type Jumps = { leftAt: number; backAt: number }
+
 /** `prev` is what the gauges sweep from; it catches up to `cur` once the sweep ends. */
 export type Gauges = { cur: Snapshot | null; prev: Snapshot | null }
 
@@ -77,6 +83,6 @@ export type Update = { current: string; latest?: string; phase: 'idle' | 'instal
 
 declare module 'claude-code' {
   interface PluginState {
-    'usage-hud': { gauges: Gauges; isHidden: boolean; activity: Activity; game: Game; update: Update }
+    'usage-hud': { gauges: Gauges; isHidden: boolean; activity: Activity; jumps: Jumps; game: Game; update: Update }
   }
 }
