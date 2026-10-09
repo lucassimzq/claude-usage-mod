@@ -38,7 +38,7 @@ The crab's mood follows whichever of the three numbers is highest.
 
 <img src="docs/states/asleep.svg" alt="The crab asleep with floating Z's and the note: Weekly limit reached, resets in 2d 4h" width="100%">
 
-While Claude works, the crab joins in: a thought bubble while Claude thinks, and a little laptop while it writes or uses tools.
+While Claude works, the crab joins in: it hops off the band onto the spinner line, with a thought bubble while Claude thinks and a little laptop while it writes or uses tools, then jumps back to the band when the turn is done. (In VS Code and the mobile app, which have no spinner a mod can draw on, it stays on the band.)
 
 ### Reading the band
 
