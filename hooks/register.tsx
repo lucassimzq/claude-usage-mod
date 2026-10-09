@@ -1,11 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionContextUsage, SessionCost, SessionRateLimit } from 'claude-code'
 
-import type { Activity, Game, Gain, Gauges, Limit, Progress, Reading, Snapshot, Update } from '../types'
+import type { Activity, Game, Gain, Gauges, Jumps, Limit, Progress, Reading, Snapshot, Update } from '../types'
 
 const gauges = atom({ plugin: 'usage-hud', key: 'gauges' } as const, { cur: null, prev: null })
 const isHidden = atom({ plugin: 'usage-hud', key: 'isHidden' } as const, false)
 const activity = atom({ plugin: 'usage-hud', key: 'activity' } as const, 'idle')
+const jumps = atom({ plugin: 'usage-hud', key: 'jumps' } as const, { leftAt: 0, backAt: 0 })
 const game = atom({ plugin: 'usage-hud', key: 'game' } as const, { progress: null, burst: false })
 const updates = atom({ plugin: 'usage-hud', key: 'update' } as const, { current: '0.0.0', phase: 'idle' })
 
@@ -614,7 +615,46 @@ const compactUnitWidth = (list: Tank[]) =>
 
 // `width` is what the figures are laid out in; `paint` (at least `width`) is how far the
 // drawing reaches, so a backdrop can run on under a control laid over its right end.
-function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width: number, view?: GameView, paint = width): string {
+// While a turn runs on a surface with a spinner, Clawd leaves the band for it and comes back
+// when the turn ends: `leaving` and `landing` are the jumps, `away` an empty spot.
+type Stance = 'home' | 'leaving' | 'away' | 'landing'
+
+/** How long after he jumps a redraw still plays the jump; later ones draw him settled. */
+const JUMP_MS = 1000
+const HOP_MS = 480
+
+/**
+ * Clawd jumping: `in` drops him from above into place, `out` crouches and leaps off the top.
+ * The `transform` attribute is where he ends, so a still frame shows him settled, or gone.
+ */
+function hopSvg(inner: string, way: 'in' | 'out'): string {
+  const ys = way === 'in' ? [-26, -17, -9, -3, 1, 0] : [0, 1, -4, -11, -19, -28]
+  const keys = ys.map((_, k) => n2(k / ys.length)).join(';')
+  return `<g transform="translate(0 ${ys[ys.length - 1]})">${inner}<animateTransform attributeName="transform" type="translate" values="${ys.map(y => `0 ${y}`).join(';')}" keyTimes="${keys}" calcMode="discrete" dur="${HOP_MS}ms" fill="freeze"/></g>`
+}
+
+/** A little dust where he took off, gone once it has shown; a still frame leaves the spot clean. */
+const PUFF = ['#.....#', '.#...#.']
+const puffSvg = (color: string) =>
+  `<g opacity="0"><path d="${pixels(PUFF, 13, 20, P)}" fill="${color}"/><animate attributeName="opacity" values="0.6;0" keyTimes="0;0.5" calcMode="discrete" dur="${HOP_MS * 2}ms" fill="freeze"/></g>`
+
+/** Clawd alone, for the spinner row: the same mood, outfit and activity he has on the band. */
+function spinnerSvg(mood: Mood, doing: Activity, outfit: Record<string, string> = {}, isJumping = false): string {
+  const clawd = clawdSvg(mood, doing, outfit)
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${SPRITE_W}" height="${HEIGHT}" viewBox="0 0 ${SPRITE_W} ${HEIGHT}" shape-rendering="crispEdges">
+  ${isJumping ? hopSvg(clawd, 'in') : clawd}
+</svg>`
+}
+
+function pixelSvg(
+  list: Tank[],
+  usd: number | undefined,
+  doing: Activity,
+  width: number,
+  view?: GameView,
+  paint = width,
+  stance: Stance = 'home',
+): string {
   const worst = list.reduce((a, b) => (b.pct > a.pct ? b : a))
   const mood = moodOf(worst.pct)
   const sizes = view ? { full: gameSvg(view, 0, 'full').width, short: gameSvg(view, 0, 'short').width } : undefined
@@ -649,10 +689,14 @@ function pixelSvg(list: Tank[], usd: number | undefined, doing: Activity, width:
   }
   const scene = view?.outfit?.scene
   // The thought and clock bubbles are open, so the landmarks behind them step aside.
-  const bubble = (doing === 'thinking' && mood !== 'asleep') || mood === 'frantic'
+  const isHome = stance === 'home' || stance === 'landing'
+  const bubble = isHome && ((doing === 'thinking' && mood !== 'asleep') || mood === 'frantic')
   const full = Math.max(width, paint)
+  const clawd = clawdSvg(mood, doing, view?.outfit, view?.burst, true, cluster ? undefined : view?.gain)
+  const crab =
+    stance === 'home' ? clawd : stance === 'landing' ? hopSvg(clawd, 'in') : stance === 'leaving' ? hopSvg(clawd, 'out') + puffSvg(MUTED) : ''
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${full}" height="${HEIGHT}" viewBox="0 0 ${full} ${HEIGHT}" shape-rendering="crispEdges">
-  ${scene ? `<g opacity="${SCENE_OPACITY}">${sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, full, left, bubble)}</g>` : ''}${clawdSvg(mood, doing, view?.outfit, view?.burst, true, cluster ? undefined : view?.gain)}
+  ${scene ? `<g opacity="${SCENE_OPACITY}">${sceneSvg(scene, 0, 0, SCENE_W, HEIGHT, full, left, bubble)}</g>` : ''}${crab}
   ${cluster?.svg ?? ''}${note?.svg ?? ''}
   ${units.join('\n')}
 </svg>`
@@ -1616,11 +1660,20 @@ async function shopPress($: EngineInterface, change: (p: Progress, arg: string) 
   if (reply) $.ui.toast(reply, { timeoutMs: 3000 })
 }
 
+// A turn starting sends Clawd to the spinner, and its end brings him back.
 async function setActivity($: EngineInterface, next: Activity) {
   if (next === doing) return
+  const was = doing
   doing = next
   await update($, activity, () => next)
+  if (was === 'idle' || next === 'idle') {
+    const now = await $.clock.now()
+    await update($, jumps, (j: Jumps) => (next === 'idle' ? { ...j, backAt: now } : { ...j, leftAt: now }))
+  }
 }
+
+/** The surfaces that draw a spinner row, where Clawd can go while a turn runs. */
+const hasSpinner = (surface: string) => surface === 'desktop' || surface === 'terminal'
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -1867,6 +1920,10 @@ export const register: Register = on => {
     const { latest, phase } = await read($, updates)
     const updateLabel = !latest ? undefined : phase === 'installing' ? 'updating…' : phase === 'restart' ? `restart for ${latest}` : undefined
     const onUpdate = async () => $.ui.toast(await installUpdate($))
+    // While a turn runs Clawd is on the spinner, where the surface draws one.
+    const isAway = e.props.isWorking && hasSpinner(e.surface)
+    const { leftAt, backAt } = await read($, jumps)
+    const stance: Stance = isAway ? (now - leftAt < JUMP_MS ? 'leaving' : 'away') : now - backAt < JUMP_MS ? 'landing' : 'home'
 
     // Every surface but the terminal (desktop, VS Code, the Claude mobile app) draws Svg.
     if (e.surface !== 'terminal') {
@@ -1875,7 +1932,7 @@ export const register: Register = on => {
       // The image can't take a press, so the refresh control is a real Button beside it.
       const offer = latest && phase === 'idle' ? `Update to ${latest}` : updateLabel
       const width = Math.max(160, Math.round(columns * PX_PER_COLUMN) - REFRESH_W - (offer ? offer.length * 7 + 28 : 0))
-      const doing = e.props.isWorking ? await read($, activity) : 'idle'
+      const doing = e.props.isWorking && !isAway ? await read($, activity) : 'idle'
       const alt = (view ? [`Level ${view.level}`].concat(view.coins !== undefined ? [`${view.coins} coins`] : []) : []).concat(list.map(t => `${t.tag} ${Math.round(t.pct)}%`)).join(', ')
       // A backdrop runs on to the right edge, under the refresh Button laid over its end;
       // the figures still keep clear of it. With an update offer in the row, the usual layout.
@@ -1883,7 +1940,7 @@ export const register: Register = on => {
         const full = width + REFRESH_W
         return (
           <Box flexDirection="row" alignItems="center" position="relative">
-            <Svg source={pixelSvg(list, cur.usd, doing, width, view, full)} alt={alt} width={full} height={HEIGHT} />
+            <Svg source={pixelSvg(list, cur.usd, doing, width, view, full, stance)} alt={alt} width={full} height={HEIGHT} />
             <Box position="absolute" right={0} top={0}>
               <Button key="refresh" label="↻" plain dimColor onPress={() => refresh($)} />
             </Box>
@@ -1894,7 +1951,7 @@ export const register: Register = on => {
       return (
         <Box flexDirection="row" alignItems="center" gap={1}>
           <Svg
-            source={pixelSvg(list, cur.usd, doing, width, view)}
+            source={pixelSvg(list, cur.usd, doing, width, view, width, stance)}
             alt={alt}
             width={width}
             height={HEIGHT}
@@ -1913,7 +1970,8 @@ export const register: Register = on => {
       const { Box, Button, Text } = $.ui.resolve(e)
       const color = (pct: number) => ({ ok: 'cyan', warn: 'yellow', hot: 'red' })[tone(pct)]
       const worst = list.reduce((a, b) => (b.pct > a.pct ? b : a))
-      const face = FACES[moodOf(worst.pct)]
+      // On the spinner line while a turn runs; the band keeps his place.
+      const face = isAway ? ' '.repeat(FACES[moodOf(worst.pct)].length) : FACES[moodOf(worst.pct)]
       const usd = cur.usd === undefined ? '' : `$${cur.usd.toFixed(2)}`
       // The level as `Lv7 ▰▰▱ ●1.2k 🔥5`; the flame counts as two columns.
       const level = view ? `Lv${view.level}` : ''
@@ -1986,5 +2044,42 @@ export const register: Register = on => {
     }
 
     return next(e)
+  })
+
+  // While a turn runs Clawd sits on the spinner row, beside the engine's own words and timer,
+  // in the same mood and outfit as on the band: the thought bubble while Claude thinks,
+  // the laptop once it writes or uses a tool.
+  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
+    if (await read($, isHidden)) return next(e)
+    const { cur } = await read($, gauges)
+    if (!cur) return next(e)
+    const now = await $.clock.now()
+    const worst = Math.max(...tanksOf(cur, null, now).map(t => t.pct))
+    const mood = moodOf(worst)
+    const own = await next(e)
+    if (e.surface === 'desktop') {
+      const { Box, Svg } = $.ui.resolve(e)
+      const doing: Activity = e.props.mode === 'thinking' || e.props.mode === 'requesting' ? 'thinking' : 'typing'
+      const { progress, burst } = await read($, game)
+      const outfit = progress ? gameViewOf(progress, now, burst).outfit : undefined
+      const { leftAt } = await read($, jumps)
+      const alt = doing === 'thinking' ? 'The crab, thinking' : 'The crab, at work'
+      return (
+        <Box flexDirection="row" alignItems="center" gap={1}>
+          <Svg source={spinnerSvg(mood, doing, outfit, now - leftAt < JUMP_MS)} alt={alt} width={SPRITE_W} height={HEIGHT} />
+          {own}
+        </Box>
+      )
+    }
+    if (e.surface === 'terminal') {
+      const { Box, Text } = $.ui.resolve(e)
+      return (
+        <Box flexDirection="row" gap={1}>
+          <Text color={CLAWD}>{FACES[mood]}</Text>
+          {own}
+        </Box>
+      )
+    }
+    return own
   })
 }
