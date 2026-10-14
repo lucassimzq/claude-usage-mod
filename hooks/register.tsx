@@ -1348,25 +1348,29 @@ let settle: { cancel: () => void } | undefined
 
 const READINGS = 'readings' // the plan limits as the last session to hear of each saw it
 const SAVED = 'limits' // what earlier versions kept: the last limits, with no time
-const SAME_WINDOW_MS = 30 * 60_000 // reset times this close are one window
 const SYNC_MS = 10_000
 
-// Two readings of one limit, from any sessions: a later window replaces an earlier one, and
-// within a window usage only grows, so the higher figure is the newer, whichever session
-// heard it and however long ago that session last refreshed.
-function newerOf(a: Reading | undefined, b: Reading): Reading {
+// Two readings of one limit, from any sessions: the one heard last is the current one, since
+// each keeps the time it was first heard (see `heardOf`). That holds when a figure drops
+// too, as after a plan change, or when a window starts over early. A window whose reset time
+// has passed never beats one still running.
+function newerOf(a: Reading | undefined, b: Reading, now: number): Reading {
   if (!a) return b
-  const ra = a.resetsAt ? Date.parse(a.resetsAt) : NaN
-  const rb = b.resetsAt ? Date.parse(b.resetsAt) : NaN
-  if (Number.isNaN(ra) || Number.isNaN(rb)) return b.seenAt >= a.seenAt ? b : a
-  if (Math.abs(ra - rb) > SAME_WINDOW_MS) return rb > ra ? b : a
-  return b.pct > a.pct || (b.pct === a.pct && b.seenAt > a.seenAt) ? b : a
+  const endedA = isEnded(a, now)
+  if (endedA !== isEnded(b, now)) return endedA ? b : a
+  if (a.seenAt !== b.seenAt) return b.seenAt > a.seenAt ? b : a
+  const ra = a.resetsAt ? Date.parse(a.resetsAt) : 0
+  const rb = b.resetsAt ? Date.parse(b.resetsAt) : 0
+  if (ra !== rb) return rb > ra ? b : a
+  return b.pct > a.pct ? b : a
 }
 
+const isEnded = (r: Reading, now: number) => r.resetsAt !== undefined && Date.parse(r.resetsAt) <= now
+
 /** Every limit either list knows, each at its newest reading; `known`'s order first. */
-function mergeReadings(known: Reading[], fresh: Reading[]): Reading[] {
+function mergeReadings(known: Reading[], fresh: Reading[], now: number): Reading[] {
   const out = new Map<string, Reading>()
-  for (const r of [...known, ...fresh]) out.set(r.kind, newerOf(out.get(r.kind), r))
+  for (const r of [...known, ...fresh]) out.set(r.kind, newerOf(out.get(r.kind), r, now))
   return [...out.values()]
 }
 
@@ -1391,7 +1395,8 @@ function limitOf(r: Reading, now: number, startedAt: number): Limit {
 }
 
 const sameReadings = (a: Reading[], b: Reading[]) =>
-  a.length === b.length && a.every((r, i) => r.kind === b[i]!.kind && r.pct === b[i]!.pct && r.resetsAt === b[i]!.resetsAt)
+  a.length === b.length &&
+  a.every((r, i) => r.kind === b[i]!.kind && r.pct === b[i]!.pct && r.resetsAt === b[i]!.resetsAt && r.seenAt === b[i]!.seenAt)
 
 const sameLimits = (a: Limit[], b: Limit[]) =>
   a.length === b.length &&
@@ -1399,18 +1404,31 @@ const sameLimits = (a: Limit[], b: Limit[]) =>
 
 // When this session began (`/clear` starts it over), for telling old readings from current ones.
 let startedAt = 0
-// This session's own latest figures, which the shared limits are folded into.
+// This session's own latest figures, which the shared limits are folded into, and its limits
+// as readings, each stamped with when this session heard it.
 let own: Snapshot | undefined
+let ownReadings: Reading[] = []
+// Each limit as this session last heard it. A figure reported again unchanged (every turn
+// reports them, and the sync replays them) keeps the time it was first heard, so an idle
+// session's figure never looks newer than another session's later one.
+const heard = new Map<string, Reading>()
+
+function heardOf(l: Limit, now: number): Reading {
+  const was = heard.get(l.kind)
+  if (was && was.pct === l.pct && was.resetsAt === l.resetsAt) return was
+  const r = { kind: l.kind, pct: l.pct, resetsAt: l.resetsAt, seenAt: now }
+  heard.set(l.kind, r)
+  return r
+}
 
 // Each session hears the plan limits only with its own replies, so they're shared through the
 // store: this session's readings go in, and what it shows is the newest any session has heard.
 // A new session shows the last ones until its first reply; any session's reply brings them up to date.
-async function withShared($: EngineInterface, snap: Snapshot): Promise<Snapshot> {
+async function withShared($: EngineInterface, snap: Snapshot, fresh: Reading[]): Promise<Snapshot> {
   const now = await $.clock.now()
   const raw = await $.store.get(READINGS)
   const known = readingsOf(raw, await $.store.get(SAVED))
-  const fresh = snap.limits.map(l => ({ kind: l.kind, pct: l.pct, resetsAt: l.resetsAt, seenAt: now }))
-  const merged = mergeReadings(known, fresh)
+  const merged = mergeReadings(known, fresh, now)
   if (!Array.isArray(raw) || !sameReadings(merged, known)) await $.store.set(READINGS, merged)
   return { ...snap, limits: merged.map(r => limitOf(r, now, startedAt)) }
 }
@@ -1422,7 +1440,7 @@ async function sync($: EngineInterface) {
   const now = await $.clock.now()
   const shared = readingsOf(await $.store.get(READINGS), await $.store.get(SAVED)).map(r => limitOf(r, now, startedAt))
   if (cur && sameLimits(cur.limits, shared)) return
-  await take($, own, false)
+  await take($, own, 'replay')
 }
 
 const PROGRESS = 'progress'
@@ -1490,10 +1508,20 @@ async function play($: EngineInterface, change: (p: Progress, now: number) => St
 let toolCalls = 0
 let lastCtx: number | undefined
 
-// `isOwn` is false for figures another session heard: it warned about them itself.
-async function take($: EngineInterface, fresh: Snapshot, isOwn = true) {
-  own = fresh
-  const snap = await withShared($, fresh)
+// Where figures come from: a reply (or a refresh), the start of the session, which may only
+// hold what an earlier session heard, or the sync replaying this session's own to fold in
+// another session's. Only a reply's are new here, so only those warn.
+type From = 'reply' | 'start' | 'replay'
+
+async function take($: EngineInterface, fresh: Snapshot, from: From = 'reply') {
+  const isOwn = from !== 'replay'
+  if (isOwn) {
+    own = fresh
+    const now = await $.clock.now()
+    // What the session holds at the start wasn't heard since it began: it counts as old.
+    ownReadings = fresh.limits.map(l => (from === 'start' ? { kind: l.kind, pct: l.pct, resetsAt: l.resetsAt, seenAt: 0 } : heardOf(l, now)))
+  }
+  const snap = await withShared($, fresh, ownReadings)
   const before = (await read($, gauges)).cur
   await update($, gauges, g => ({ cur: snap, prev: g.cur }))
   for (const l of isOwn ? snap.limits : []) {
@@ -1654,7 +1682,7 @@ export const register: Register = on => {
     try {
       const usage = await $.session.usage()
       startedAt = usage.startedAt
-      await take($, snapshotOf(usage))
+      await take($, snapshotOf(usage), 'start')
     } catch (err) {
       startedAt = await $.clock.now()
       $.ui.log(`couldn't read usage at start: ${err instanceof Error ? err.message : String(err)}`, { to: 'debug' })
@@ -1879,10 +1907,12 @@ export const register: Register = on => {
       const alt = (view ? [`Level ${view.level}`].concat(view.coins !== undefined ? [`${view.coins} coins`] : []) : []).concat(list.map(t => `${t.tag} ${Math.round(t.pct)}%`)).join(', ')
       // A backdrop runs on to the right edge, under the refresh Button laid over its end;
       // the figures still keep clear of it. With an update offer in the row, the usual layout.
+      // The row hugs the image (`alignSelf`), so the Button sits on the scene's end even where
+      // the band is a little narrower than the slot, rather than at the slot's edge past it.
       if (view?.outfit?.scene && !offer) {
         const full = width + REFRESH_W
         return (
-          <Box flexDirection="row" alignItems="center" position="relative">
+          <Box flexDirection="row" alignItems="center" alignSelf="flex-start" position="relative">
             <Svg source={pixelSvg(list, cur.usd, doing, width, view, full)} alt={alt} width={full} height={HEIGHT} />
             <Box position="absolute" right={0} top={0}>
               <Button key="refresh" label="↻" plain dimColor onPress={() => refresh($)} />

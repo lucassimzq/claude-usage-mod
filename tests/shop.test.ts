@@ -83,6 +83,11 @@ test('a backdrop is bought like an item and drawn behind the crab on the band', 
   // The scene runs on under the refresh Button, which still answers.
   expect(svg.props.source).toContain('width="936" height="24" viewBox="0 0 936 24"')
   expect(await band.find({ type: 'Button', key: 'refresh' })).toBeDefined()
+  // The row hugs the image, so the Button laid over its right end lands on the scene.
+  const row = (await band.find({ type: 'Box' })) as unknown as { props: Record<string, unknown> }
+  expect(row.props).toMatchObject({ alignSelf: 'flex-start', position: 'relative' })
+  const over = (await band.findAll({ type: 'Box' })) as unknown as { props: Record<string, unknown> }[]
+  expect(over.some(b => b.props.position === 'absolute' && b.props.right === 0)).toBe(true)
   expect(svg.props.source).toMatch(/<rect x="0" y="0" width="9\d\d" height="24" fill="#1b1d2b"/) // across the whole band
   await band.unmount()
 
