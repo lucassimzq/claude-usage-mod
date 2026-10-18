@@ -1597,6 +1597,7 @@ let running = '0.0.0'
 let restartHint: { cancel: () => void } | undefined
 const LATEST = 'latest' // { tag, checkedAt }: the last answer from GitHub, shared by every session
 const INSTALLING = 'installing' // the tag a press last installed, so the reloaded mod can say so
+const MISTAGGED = 'mistagged' // a tag that installed but whose plugin.json is older, so it isn't offered again
 
 // Asks GitHub for the newest release tag at most every few hours (any session's answer
 // counts), and marks the band when it's newer than what's running. `isForced` is the person
@@ -1621,7 +1622,10 @@ async function checkForUpdate($: EngineInterface, isForced = false): Promise<str
       // Offline or refused: keep what we knew and try again on the next check.
     }
   }
-  const latest = tag && isNewer(tag, running) ? tag : undefined
+  // A tag on a commit whose plugin.json wasn't bumped would be offered forever: it installs, the
+  // reload still reads the old version, and the tag looks newer again.
+  const mistagged = (await $.store.get(MISTAGGED)) as string | undefined
+  const latest = tag && isNewer(tag, running) && tag !== mistagged ? tag : undefined
   await update($, updates, (u: Update): Update => ({ ...u, current: running, latest }))
   return latest
 }
@@ -1721,6 +1725,7 @@ export const register: Register = on => {
     if (installed) {
       await $.store.delete(INSTALLING).catch(() => undefined)
       if (!isNewer(installed, running)) $.ui.toast(`Clawd updated himself to v${running}`)
+      else await $.store.set(MISTAGGED, installed)
     }
     await update($, updates, (): Update => ({ current: running, phase: 'idle' }))
     void checkForUpdate($)
