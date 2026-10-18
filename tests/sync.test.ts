@@ -84,7 +84,7 @@ test("this session's older figure never pulls the shared one down", async ($, on
 
 test("a new window replaces the last one's figure, even when lower", async ($, on) => {
   const later = new Date(NOON + 5 * HOUR).toISOString()
-  const { data } = world(on, { readings: [reading(90)] })
+  const { data } = world(on, { readings: [reading(90, RESETS, NOON - HOUR)] })
   await start($)
   await measure($, 4, later)
   expect(await fiveHourShown($)).toBe('4')
@@ -117,4 +117,58 @@ test('a session whose first usage read fails still takes up the shared figures',
   data.readings = [reading(75, RESETS, NOON + 5_000)]
   await clock.advance(10_000)
   expect(await fiveHourShown($)).toBe('75')
+})
+
+async function weeklyShown($: Engine): Promise<{ pct?: string; isFaded: boolean }> {
+  const band = await $.ui.mount({ plugin: 'usage-hud', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 200 } as never })
+  const texts = await band.findAll({ type: 'Text' })
+  await band.unmount()
+  const i = texts.findIndex(t => /7d/.test(t.text))
+  const figure = texts.slice(i).find(t => /^\d+%$/.test(t.text))
+  return { pct: figure?.text.replace('%', ''), isFaded: Boolean((figure?.props as { dimColor?: boolean } | undefined)?.dimColor) }
+}
+
+const weekly = (pct: number, seenAt: number, resetsAt = WEEK_RESETS) => ({ kind: 'seven_day', pct, resetsAt, seenAt })
+
+test('a lower figure in the same window wins once it is heard, as after a plan upgrade', async ($, on) => {
+  // On Pro the week stood at 43%; after moving to Max the same week reads 9%
+  const { data, clock } = world(on, { readings: [reading(20, RESETS, NOON - HOUR), weekly(43, NOON - HOUR)] })
+  await start($)
+  expect(await weeklyShown($)).toEqual({ pct: '43', isFaded: true })
+  await clock.advance(60_000)
+  await $.session.measure({
+    context: { window: 200_000, percent: 10 },
+    rateLimits: [
+      { kind: 'five_hour', percentUsed: 5, resetsAt: RESETS },
+      { kind: 'seven_day', percentUsed: 9, resetsAt: WEEK_RESETS },
+    ],
+    changed: ['rateLimits'],
+  })
+  expect(await weeklyShown($)).toEqual({ pct: '9', isFaded: false })
+  expect((data.readings as { kind: string; pct: number }[]).find(r => r.kind === 'seven_day')!.pct).toBe(9)
+})
+
+test("a figure this session keeps reporting unchanged never outranks another session's later one", async ($, on) => {
+  const { data, clock } = world(on)
+  await start($)
+  await measure($, 50)
+  // Another session hears a lower figure a minute later (the plan changed there first)
+  data.readings = [reading(30, RESETS, NOON + 60_000), weekly(30, NOON)]
+  await clock.advance(120_000)
+  // This session's next turn still reports what it heard before, and the sync replays it
+  await measure($, 50)
+  await clock.advance(10_000)
+  expect(await fiveHourShown($)).toBe('30')
+  expect((data.readings as { pct: number }[])[0]!.pct).toBe(30)
+})
+
+test('what a session holds at the start never outranks a figure heard since', async ($, on) => {
+  const { data } = world(on, { readings: [weekly(9, NOON - 60_000)] }, () => ({
+    startedAt: NOON,
+    context: { window: 200_000, percent: 10 },
+    rateLimits: [{ kind: 'seven_day', percentUsed: 43, resetsAt: WEEK_RESETS }],
+  }))
+  await start($)
+  expect((await weeklyShown($)).pct).toBe('9')
+  expect((data.readings as { pct: number }[])[0]!.pct).toBe(9)
 })
