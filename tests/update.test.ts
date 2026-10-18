@@ -177,6 +177,26 @@ test('the reloaded mod says once that it updated', async ($, on) => {
   expect(toasts).toEqual(['Clawd updated himself to v0.0.1'])
 })
 
+test('a release tag whose plugin.json was not bumped is offered only until it is installed', async ($, on) => {
+  // v0.0.2 was installed, but its plugin.json still says 0.0.1
+  world(on, { installing: 'v0.0.2' })
+  github(on, ['v0.0.2'])
+  await start($)
+  await measure($)
+  const band = await $.ui.mount({ plugin: 'usage-hud', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as never })
+  expect(await band.find({ type: 'Button', key: 'update' })).toBeUndefined()
+  await band.unmount()
+  expect(await run($, 'update')).toBe('usage-hud is up to date (v0.0.1).')
+})
+
+test('a newer tag after a mistagged one is offered', async ($, on) => {
+  world(on, { mistagged: 'v0.0.2' })
+  github(on, ['v0.0.2', 'v0.0.3'])
+  git(on)
+  await start($)
+  expect(await run($, 'update')).toBe('Installing usage-hud v0.0.3…')
+})
+
 test('a hidden band stays hidden in the next session', async ($, on) => {
   world(on)
   github(on, ['v0.0.1'])
